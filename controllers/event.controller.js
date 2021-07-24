@@ -19,8 +19,9 @@ const saltRounds = 10;
 const ExcelJS = require('exceljs');
 var AdminFB = require("firebase-admin");
 var axios = require('axios');
-
 const stripe = require('stripe')(process.env.STRIPE_API_KEY);
+
+//const stripe = require('stripe')(process.env.STRIPE_API_KEY);
 
 exports.createEvent = (req, res) => {
     var result = {};
@@ -182,6 +183,8 @@ exports.createEvent = (req, res) => {
             .then(newEvent => {
                 // change this user to be a host
                 user.isHost = true;
+               
+                // end add user as a customer on stripe
                 User.updateOne({_id: user._id}, user)
                 .then(da => console.log("user have been upgraded to host"))
                 .catch(err => console.log("error occurred upgrading user to host"));
@@ -697,17 +700,18 @@ exports.buyTicket = async(req, res) => {
             });
 
             //send email to guests who just bought tickets
-            tools.sendEmailToMany(allGuestEmails, "Your Event Ticket", "Your ticket is ready on PPLE");
+            //tools.sendEmailToMany(allGuestEmails, "Your Event Ticket", "Your ticket is ready on PPLE");
             
             result.status = "success";
             result.message = "ticket sales was successful";
             result.tickets = cTickets;
             result.guests = allGuests;
+            result.chargeData = chargeData;
             return res.status(200).send(result);
             
         } else{
             result.status = "failed";
-            result.message = "invalid charge Id";
+            result.message = "invalid charge Id or error occurred";
             return res.status(400).send(result);
         }
     })

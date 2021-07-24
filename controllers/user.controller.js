@@ -1,5 +1,6 @@
 const db = require("../models");
 const User = db.users;
+const Wallet = db.wallets;
 const VerifyCode = db.verifycodes;
 const ResetCode = db.resetcodes;
 
@@ -71,6 +72,25 @@ exports.createUser = (req, res) => {
                 
             newUser.save(newUser)
             .then(user => {
+                // create user wallet
+                var wallet = new Wallet({
+                    walletRef: cryptoRandomString({length: 6, type: 'alphanumeric'}) + cryptoRandomString({length: 6, type: 'alphanumeric'}),
+                    userId: user._id,
+                    user: user._id
+                });
+
+                wallet.save(wallet)
+                .then(wa => {
+                    console.log("user wallet created");
+                    user.wallet = wa._id;
+                    User.updateOne({_id: user._id}, user)
+                    .then(wa => console.log("user updated"))
+                    .catch(err => console.log("error updating user"));
+
+                })
+                .catch(err => console.log("error creating wallet"));
+
+               
                     
                 // send verification email
                 var vcode = new VerifyCode({

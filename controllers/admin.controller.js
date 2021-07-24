@@ -3,6 +3,9 @@ const User = db.users;
 const ResetCode = db.resetcodes;
 const Admin = db.admins;
 const Event = db.events;
+const Wallet = db.wallets;
+const WalletTrans = db.wallettrans;
+const Bank = db.banks;
 const os = require('os');
 var fs = require('fs');
 const path = require("path");
@@ -36,6 +39,7 @@ exports.adminAllUsers = (req, res) => {
         .skip((perPage * page) - perPage)
         .limit(perPage)
         .populate('events')
+        .populate('wallet')
         .sort('-createdAt')
         .then(users => {
             result.status = "success";
@@ -56,12 +60,50 @@ exports.adminAllUsers = (req, res) => {
     
 }
 
+exports.adminAllBanks = (req, res) => {
+    var result = {};
+    var perPage = 10;
+    var page = req.query.page;
+
+    console.log(page);
+
+    if(!page){
+        page = 1;
+    }
+    console.log(page);
+
+    Bank.find()
+    .then(initBanks => {
+        Bank.find()
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate('user', {password: 0, events: 0, wallet: 0})
+        .sort('-createdAt')
+        .then(banks => {
+            result.status = "success";
+            result.message = "banks found: " + banks.length;
+            result.total = initBanks.length;
+            result.banks = banks;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding banks";
+            return res.status(500).send(result);
+        });
+    })
+    
+    
+    
+}
+
 exports.flagUnflagUser = (req, res) => {
 	var result = {};
-	var username = req.body.username;
+	var userId = req.body.userId;
 	var status = req.body.status;
 	
-	User.findOne({username: username})
+	User.findOne({_id: userId})
 	.then(user => {
 		if(!user){
 			result.status = "failed";
@@ -297,7 +339,7 @@ exports.allAdmins = (req, res) => {
     .select("-password")
     .then(admins => {
         result.status = "success";
-        result.message = "users found";
+        result.message = "admins found";
         result.admins = admins;
         return res.status(200).send(result);
     })
@@ -379,11 +421,11 @@ exports.adminLogin = (req, res) => {
 exports.adminSearchUsers = (req, res) => {
     var result = {};
     var query = req.body.query;
+    console.log(query);
 
     User.find({$text: {$search: query}})
     .select("-password")
-    .populate('events')
-    
+    .populate('events')    
     .sort('-createdAt')
     .then(users => {
         result.status = "success";
@@ -540,6 +582,44 @@ exports.dashboardData = (req, res) => {
         return res.status(500).send(result);
     });
 
+    
+}
+
+exports.adminAllWallets = (req, res) => {
+    var result = {};
+    var perPage = 10;
+    var page = req.query.page;
+
+    console.log(page);
+
+    if(!page){
+        page = 1;
+    }
+    console.log(page);
+
+    Wallet.find()
+    .then(initWallets => {
+        Wallet.find()
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate('user', {password: 0, events: 0, bank: 0, wallet: 0})
+        .sort('-createdAt')
+        .then(wallets => {
+            result.status = "success";
+            result.message = "wallets found: " + wallets.length;
+            result.total = initWallets.length;
+            result.wallets = wallets;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding wallets";
+            return res.status(500).send(result);
+        });
+    })
+    
+    
     
 }
 

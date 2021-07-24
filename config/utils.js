@@ -276,6 +276,18 @@ pushMessageToTopic: (topic, title, body) => {
             console.log("Error sending message:", error);
         });
 
+},
+
+calculateHostTipCommission: (amount, percent) => {
+     // commission is usually 10%
+     var perc = percent;
+     if(!perc){
+         perc = 10;
+
+     }
+     var charge = ((perc/100) * amount);
+     
+     return charge;
 }
 
    

@@ -8,6 +8,7 @@ module.exports = app => {
     router.post("/flag-user", tools.authenticateSuperAdminToken, admins.flagUnflagUser);     
      
     router.get("/all-admins", tools.authenticateSuperAdminToken, admins.allAdmins); 
+    router.get("/all-banks", tools.authenticateSuperAdminToken, admins.adminAllBanks); 
     router.post("/create-admin", admins.createAdmin); 
     router.post("/admin-start-password-reset", admins.initAdminChangePassword); 
     router.post("/admin-password-reset", admins.resetAdminPassword); 
@@ -17,6 +18,7 @@ module.exports = app => {
     router.get("/admin-all-events-dashboard", admins.allEventsDashboard); 
     router.get("/admin-all-events", admins.allEvents); 
     router.get("/admin-dashboard-data", admins.dashboardData); 
+    router.post("/admin-search-users", admins.adminSearchUsers); 
 
       
     app.use('/api/v1/admin', router);
