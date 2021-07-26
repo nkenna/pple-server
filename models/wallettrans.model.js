@@ -21,6 +21,8 @@ module.exports = mongoose => {
       object.id = _id;
       return object;
     });
+
+    schema.index({ walletRef: 'text', payerEmail: 'text', chargeId: 'text', payoutId: 'text', amount: 'text', type: 'text'});
   
     const WalletTrans = mongoose.model("wallettrans", schema);
     return WalletTrans;

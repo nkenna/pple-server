@@ -8,7 +8,12 @@ module.exports = app => {
     router.post("/flag-user", tools.authenticateSuperAdminToken, admins.flagUnflagUser);     
      
     router.get("/all-admins", tools.authenticateSuperAdminToken, admins.allAdmins); 
-    router.get("/all-banks", tools.authenticateSuperAdminToken, admins.adminAllBanks); 
+    router.get("/all-banks", tools.authenticateSuperAdminToken, admins.adminAllBanks);
+    router.get("/all-wallets", tools.authenticateSuperAdminToken, admins.adminAllWallets);
+    router.get("/all-wallet-trans", tools.authenticateSuperAdminToken, admins.adminAllWalletTrans);
+    router.post("/admin-search-wallet-trans", tools.authenticateSuperAdminToken, admins.adminSearchWalletTrans);
+    
+    
     router.post("/create-admin", admins.createAdmin); 
     router.post("/admin-start-password-reset", admins.initAdminChangePassword); 
     router.post("/admin-password-reset", admins.resetAdminPassword); 

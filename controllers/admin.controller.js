@@ -98,6 +98,107 @@ exports.adminAllBanks = (req, res) => {
     
 }
 
+exports.adminAllWallets = (req, res) => {
+    var result = {};
+    var perPage = 10;
+    var page = req.query.page;
+
+    console.log(page);
+
+    if(!page){
+        page = 1;
+    }
+    console.log(page);
+
+    Wallet.find()
+    .then(initWallets => {
+        Wallet.find()
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate('user', {password: 0, events: 0, wallet: 0})
+        .sort('-createdAt')
+        .then(wallets => {
+            result.status = "success";
+            result.message = "wallets found: " + wallets.length;
+            result.total = initWallets.length;
+            result.wallets = wallets;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding wallets";
+            return res.status(500).send(result);
+        });
+    })
+    
+    
+    
+}
+
+exports.adminAllWalletTrans = (req, res) => {
+    var result = {};
+    var perPage = 10;
+    var page = req.query.page;
+
+    console.log(page);
+
+    if(!page){
+        page = 1;
+    }
+    console.log(page);
+
+    WalletTrans.find()
+    .then(initWalletTrans => {
+        WalletTrans.find()
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate('user', {password: 0, events: 0, wallet: 0})
+        .populate('wallet', {user: 0})
+        .sort('-createdAt')
+        .then(walletTrans => {
+            result.status = "success";
+            result.message = "wallet transactions found: " + walletTrans.length;
+            result.total = initWalletTrans.length;
+            result.walletTrans = walletTrans;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding wallet  transactions";
+            return res.status(500).send(result);
+        });
+    })
+    
+    
+    
+}
+
+exports.adminSearchWalletTrans = (req, res) => {
+    var result = {};
+    var query = req.body.query;
+    console.log(query);
+
+    WalletTrans.find({$text: {$search: query}})
+    .populate('user', {password: 0, events: 0, wallet: 0})
+    .populate('wallet', {user: 0})
+    .sort('-createdAt')
+    .then(walletTrans => {
+        result.status = "success";
+        result.message = "wallet transactions found: " + walletTrans.length;
+        result.total = walletTrans.length;
+        result.walletTrans = walletTrans;
+        return res.status(200).send(result);
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding wallet  transactions";
+        return res.status(500).send(result);
+    });
+}
+
 exports.flagUnflagUser = (req, res) => {
 	var result = {};
 	var userId = req.body.userId;

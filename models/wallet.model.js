@@ -16,6 +16,8 @@ module.exports = mongoose => {
       object.id = _id;
       return object;
     });
+
+    schema.index({ walletRef: 'text'});
   
     const Wallet = mongoose.model("wallet", schema);
     return Wallet;
