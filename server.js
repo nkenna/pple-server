@@ -20,19 +20,17 @@ app.use(fileUpload({
   debug: true
 }));
 
-var filesFolderAvatar = path.join(__dirname, 'media/images/avatars');
-var filesFolderHeaders = path.join(__dirname, 'media/images/headers');
-var filesFolderPosts = path.join(__dirname, 'media/images/posts');
+var filesFolderAvatar = path.join(process.cwd(), 'media/images/avatars');
+var filesFolderEvents = path.join(process.cwd(), 'media/images/events');
 
 console.log(filesFolderAvatar);
-console.log(filesFolderHeaders);
-console.log(filesFolderPosts);
+console.log(filesFolderEvents);
+
 
 //app.use('/static', express.static(path.join(__dirname, 'public')))
 
 app.use('/media-avatar', express.static(filesFolderAvatar));
-app.use('/media-header', express.static(filesFolderHeaders));
-app.use('/media-post', express.static(filesFolderPosts));
+app.use('/media-events', express.static(filesFolderEvents));
 
 
 db.mongoose

@@ -2,8 +2,9 @@ const db = require("../models");
 const User = db.users;
 const Event = db.events;
 const Location = db.locations;
+const Admin = db.admins;
 const Ticket = db.tickets;
-const ChildTicket = db.tickets;
+const ChildTicket = db.childtickets;
 const Guest = db.guests;
 
 const os = require('os');
@@ -264,6 +265,239 @@ exports.createEvent = (req, res) => {
     });  
 
 
+
+}
+
+exports.createAdminEvent = (req, res) => {
+    var result = {};
+
+    var title = req.body.title;
+    var detail = req.body.detail;
+    var startDate = req.body.startDate;
+    var endDate = req.body.endDate;
+    var paid = req.body.paid;
+    var creatorId = req.body.creatorId;
+    var creatorType = req.body.creatorType;
+    var recurring = req.body.recurring;
+    var timeToNextStartDate = req.body.timeToNextStartDate;
+    var timeToNextStartDateType = req.body.timeToNextStartDateType;
+    var virtual = req.body.virtual;
+    var virtualPlatform = req.body.virtualPlatform;
+    var virtualLink = req.body.virtualLink;
+    var location = req.body.location;
+
+    if(virtual == null){
+        result.status = "failed";
+        result.message = "invalid data - is this event virtual or physical. please specify this field";
+        return res.status(400).send(result);
+    }
+
+    if(virtual == true && (!virtualLink && virtualPlatform)){
+        result.status = "failed";
+        result.message = "this event is virtual. please specify virtual platform and link to join";
+        return res.status(400).send(result);
+    }
+
+    if(!location){
+        result.status = "failed";
+        result.message = "event location is required";
+        return res.status(400).send(result);
+    }
+
+    if(location && (!location.address || !location.city)){
+        result.status = "failed";
+        result.message = "event city and address is required";
+        return res.status(400).send(result);
+    }
+
+
+    if(!title){
+        result.status = "failed";
+        result.message = "event title is required";
+        return res.status(400).send(result);
+    }
+
+    if(paid == null){
+        result.status = "failed";
+        result.message = "this event must be paid or not paid";
+        return res.status(400).send(result);
+    }
+
+    if(!creatorId){
+        result.status = "failed";
+        result.message = "creatorId is required";
+        return res.status(400).send(result);
+    }
+
+    if(!creatorType){
+        result.status = "failed";
+        result.message = "creatorType is required";
+        return res.status(400).send(result);
+    }
+
+    if(!startDate){
+        result.status = "failed";
+        result.message = "event start date is required";
+        return res.status(400).send(result);
+    }
+
+    if(recurring == null){
+        result.status = "failed";
+        result.message = "this event must be recurring or one-time";
+        return res.status(400).send(result);
+    }
+
+    if(recurring == true && !timeToNextStartDateType){
+        result.status = "failed";
+        result.message = "this event is recurring. please specify when to scehudlu the next start date.";
+        return res.status(400).send(result);
+    }
+
+    if(timeToNextStartDateType &&  //hours, days, weeks, months or years
+        (timeToNextStartDateType != "hours" || timeToNextStartDateType != "days" || timeToNextStartDateType != "weeks" || timeToNextStartDateType != "months" || timeToNextStartDateType != "years")
+        ){
+        result.status = "failed";
+        result.message = "invalid time to next start date type- this event is recurring. please specify valid next to next start date type. it must be either hours, days, weeks, months or years";
+        return res.status(400).send(result);
+    }
+
+    if(recurring == true && !timeToNextStartDate){
+        result.status = "failed";
+        result.message = "invalid time to next start date - this event is recurring. please specify valid next to next start date.";
+        return res.status(400).send(result);
+    }
+
+    var ref = creatorId.substring(0, 8) + cryptoRandomString({length: 8, type: 'alphanumeric'});
+
+    Admin.findOne({_id: creatorId})
+    .then(user => {
+        if(!user){
+            result.status = "failed";
+            result.message = "this admin data was not found";
+            return res.status(404).send(result);
+        }
+
+        // if recurring prepare next start date
+        var newStartDate = "";
+        if(recurring == true){
+            if(timeToNextStartDateType == "hours"){
+                var sD = new Date(startDate);
+                sD.setHour(sD.getHours() + timeToNextStartDate);
+                newStartDate = sD.toISOString();
+            }
+        }
+
+        // create location data
+        var loc = new Location({
+            country: location.country,
+            state: location.state,
+            city: location.city,
+            address: location.address,
+            landmark: location.landmark,
+            lat: location.lat,
+            lon: location.lon,
+            //eventId: { type: String, default: "" },
+            //event: [{ type: mongoose.Schema.Types.ObjectId, ref: 'event'}],
+            //user: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
+        });
+
+        loc.save(loc)
+        .then(newLoc => {
+            // this event host was found so continue
+            var event = new Event({
+                title: title,
+                detail: detail,
+                ref: ref,
+                creatorId: creatorId,
+                creatorType: creatorType,
+                startDate: startDate,
+                endDate: endDate,
+                recurring: recurring,
+                timeToNextStartDate: timeToNextStartDate,
+                timeToNextStartDateType: timeToNextStartDateType,
+                paid: paid,
+                virtual: virtual,
+                virtualPlatform: virtualPlatform,
+                virtualLink: virtualLink,
+                eventInviteLink: ref,
+                admin: user._id,
+                location: newLoc._id,
+            });
+
+            event.save(event)
+            .then(newEvent => {
+                
+
+                //update location with eventId
+                newLoc.eventId = newEvent._id;
+                newLoc.event = newEvent._id;
+                Location.updateOne({_id: newLoc._id}, newLoc)
+                .then(da => console.log("location have been updated"))
+                .catch(err => console.log("error occurred updating location"));
+
+                // event have been created. Send email to users within the event city
+                Location.find({city: location.city})
+                .populate('user', {password: 0})
+                .populate('event')
+                .then(locations => {
+                   // console.log(locations);
+                    let validLocations = [];
+                    for (let i = 0; i < locations.length; i++) {
+                        console.log(locations[i]);
+                        if(locations[i].userId.length > 0){
+                            validLocations.push(locations[i]);
+                        }                      
+                    }
+                 
+                    console.log(validLocations);
+
+                    // extract user data from the location.
+                    // valid locations have been populated. sort out locations with users in the same city as the event
+                    let validUserEmails = [];
+                    for (let j = 0; j < validLocations.length; j++) {
+                        if(validLocations[j].user.city == newEvent.location.city){
+                            validUserIds.push(validLocations[i].user.email);
+                        }
+                        
+                    }
+
+                    console.log(validUserEmails);
+
+                    if(validUserEmails.length > 0){
+                         // send email to these users
+                    var content = "<p>Hi,</p>" +
+                                    "<p>A new event was just created on PPLE that might interest</p>";
+                    tools.sendEmailToMany(validUserEmails, "New Event on PPLE close to you", content);
+
+                    }                  
+
+                   
+                    result.status = "success";
+                    result.event = newEvent;
+                    result.message = "new event created successfully";
+                    return res.status(200).send(result);
+                })
+            })
+            .catch(err => {
+                console.log(err);
+                result.status = "failed";
+                result.message = "error occurred creating event";
+                return res.status(500).send(result);
+            });  
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred saving location";
+            return res.status(500).send(result);
+        });         
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding this host data";
+        return res.status(500).send(result);
+    });  
 
 }
 
@@ -594,6 +828,100 @@ exports.searchForEvent = (req, res) => {
     });
 }
 
+exports.editEventMedia = (req, res) => {
+    var result = {};
+   
+    let uploadPath;
+    var mediaPosition = req.body.mediaPosition;
+    var avatar = req.files.avatar; 
+    var eventId = req.body.eventId;
+
+    if (!req.files || Object.keys(req.files).length === 0) {
+        result.status = "failed";
+        result.message = "image fields cannot be empty";
+        return res.status(400).send(result);
+    }
+
+    Event.findOne({_id: eventId})
+    .then(event => {
+        if(!event){
+            result.status = "failed";
+            result.message = "event not found";
+            return res.status(404).send(result);
+        }
+
+        uploadPath = path.join(process.cwd(), '/media/images/events/' +  avatar.name); //__dirname + '/images/avatars/' + avatar.name;
+        console.log(avatar.mimetype);
+        console.log(process.cwd()); 
+
+         // Use the mv() method to place the file somewhere on your server
+        avatar.mv(uploadPath, function(err) {
+            if (err){
+                result.status = "failed";
+                result.message = "error moving file: " + err;
+                return res.status(500).send(result);
+            }
+
+
+            // create filename
+            var newName = '';
+            if(avatar.mimetype == 'image/jpeg'){
+                newName = event.ref + '_' + mediaPosition + '.jpg';
+            }else if(avatar.mimetype == 'image/png'){
+                newName = event.ref + '_' + mediaPosition + '.png';
+            }else if (avatar.mimetype == 'image/gif') {
+                newName = event.ref + '_' + mediaPosition + '.gif';
+            }else {
+                newName = event.ref + '_' + mediaPosition + '.png';
+            }
+            
+            // we need to rename here   
+            var newPath = path.join(process.cwd(), '/media/images/events/' + newName);  
+            fs.rename(uploadPath, newPath, function(err) {
+                if (err) {
+                    result.status = "failed";
+                    result.message = "image rename not successful: " + err;
+                    return res.status(500).send(result);
+                }
+                console.log("Successfully renamed the event image!: " + newName );
+
+                // update event image field in the required position
+                if(mediaPosition == 1){
+                    event.mediaPosition1 = "media-events/" + newName;
+                }else if(mediaPosition == 2){
+                    event.mediaPosition2 = "media-events/" + newName;
+                }else if(mediaPosition == 3){
+                    event.mediaPosition3 = "media-events/" + newName;
+                }else if(mediaPosition == 4){
+                    event.mediaPosition4 = "media-events/" + newName;
+                }               
+
+
+                Event.updateOne({_id: event._id}, event)
+                .then(data => {
+                    result.status = "success";
+                    result.message = "event image uploaded successful";
+                    return res.status(200).send(result);
+                })
+                .catch(err => {
+                    console.log(err);
+                    result.status = "failed";
+                    result.message = "error occurred uploading event image";
+                    return res.status(500).send(result);
+                });
+                
+            });
+
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding event";
+        return res.status(500).send(result);
+    });  
+}
+
 
 exports.buyTicket = async(req, res) => {
     var result = {};
@@ -619,35 +947,30 @@ exports.buyTicket = async(req, res) => {
      */
     
 
-    // verify transcation from stripe
-    /**const charge = await stripe.charges.create({
-        amount: 20,
-        currency: 'usd',
-        source: 'tok_mastercard',
-        description: 'My First Test Charge (created for API docs)',
-      });
-
-    console.log(charge); **/ 
-    
+        
     stripe.charges.retrieve(chargeId) //'ch_1J8u0m2eZvKYlo2C4iRdROE7'
-    .then(chargeData => {
-        console.log(chargeData);
+    .then(async(chargeData) => {
+        
         //"status": "succeeded",
         if(chargeData.status == "succeeded"){
+            //console.log(chargeData);
             // charge was successful, lets create child ticket for user
             var cTickets = [];
             var allGuests = [];
-            for(let td in ticketData){
-                Ticket.findOne({_id: td.ticketId})
-                .then(t => {
+            
+            for(var i = 0; i < ticketData.length; i++){
+                try{
+                    let t = await Ticket.findOne({_id: ticketData[i].ticketId}).exec();
+                    console.log(t);
                     if(!t){
+                        console.log("this ticket data was not found");
                         result.status = "failed";
                         result.message = "this ticket data was not found so this operation cannot continue. please contact support.";
                         return res.status(500).send(result);
                     }
 
                     // ticket data was found so create child ticket with the required quantity
-                    for (let i = 0; i < td.quantity; i++) {
+                    for (let j = 0; j < ticketData[i].quantity; j++) {
                         var childTicket = new ChildTicket({
                             title: t.title,
                             detail: t.detail,
@@ -664,6 +987,18 @@ exports.buyTicket = async(req, res) => {
                         });
 
                         cTickets.push(childTicket);
+
+                        // increase ticket sold quantity
+                        t.soldTickets = t.soldTickets + 1;
+                        try{
+                            let tUpdate = await Ticket.findOne({_id: ticketData[i].ticketId}).exec();
+                            console.log("ticket sold quantity updated successfully");
+                        }
+                        catch(er){
+                            console.log(er);
+                        }
+                        
+
                     }
 
                     // save guest
@@ -673,31 +1008,36 @@ exports.buyTicket = async(req, res) => {
                         phone: phone,
                         email: email,
                         userId: userId,
-                        event: td.eventId,
+                        event: ticketData[i].eventId,
                     });
 
-
-                    guest.save(guest)
-                    .then(nG => {
+                    try{
+                        let nG = await guest.save(guest);
                         console.log("saved event guest");
-                        allGuests.push(nG);
-                    })
-                    .catch(error => console.error(error));                    
-
-                })
-                
+                        console.log(nG);
+                    }
+                    catch(err){
+                        console.log(err);
+                    }
+                    
+                    }
+                    catch(error){
+                        console.log(error);
+                    };                   
+                                
             }
 
-            cTickets.forEach((ct, index) => {
-                ct.save(ct)
-                .then(nCT => console.log("saved child ticket"))
-                .catch(error => console.error(error));
-            });
+            for(var i = 0; i < cTickets.length; i++){
+                var ct = cTickets[i];
+                let nct =  await ct.save(ct);
+                console.log(nct);                
+            }
 
             var allGuestEmails = [];
-            allGuests.forEach((ag, i) => {
-                allGuestEmails.push(ag.email);
-            });
+            for(var i = 0; i < allGuests.length; i++){
+                var ct = allGuests[i];
+                allGuestEmails.push(ct.email);
+            }
 
             //send email to guests who just bought tickets
             //tools.sendEmailToMany(allGuestEmails, "Your Event Ticket", "Your ticket is ready on PPLE");
@@ -706,7 +1046,7 @@ exports.buyTicket = async(req, res) => {
             result.message = "ticket sales was successful";
             result.tickets = cTickets;
             result.guests = allGuests;
-            result.chargeData = chargeData;
+            //result.chargeData = chargeData;
             return res.status(200).send(result);
             
         } else{
@@ -723,3 +1063,4 @@ exports.buyTicket = async(req, res) => {
     
     });
 }
+

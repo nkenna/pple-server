@@ -9,6 +9,7 @@ module.exports = app => {
     router.post("/create-ticket", events.createEventTicket);
     router.post("/events-by-host", events.eventsByUser);
     router.post("/buy-paid-ticket", events.buyTicket);
+    router.post("/upload-event-image", events.editEventMedia);
       
       
     app.use('/api/v1/event', router);

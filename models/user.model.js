@@ -12,10 +12,12 @@ module.exports = mongoose => {
         verified: { type: Boolean, default: false },
         isHost: { type: Boolean, default: false },
         stripeCustomerId: { type: String, default: "" },
+        accountId: { type: String, default: "" },
         hostTip: { type: Number, default: 5 }, // default tip amount is $5
         type: {type: String, default: "user"}, // user or admin
         events: [{ type: mongoose.Schema.Types.ObjectId, ref: 'event'}],
         bank: { type: mongoose.Schema.Types.ObjectId, ref: 'bank'},
+        connectedaccount: { type: mongoose.Schema.Types.ObjectId, ref: 'connectedaccount'},
         wallet: { type: mongoose.Schema.Types.ObjectId, ref: 'wallet'},
       },
       {timestamps: true}

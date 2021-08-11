@@ -13,6 +13,7 @@ db.guests = require('./guest.model')(mongoose);
 db.verifycodes = require('./verifycode.model')(mongoose);
 db.resetcodes = require('./resetcode.model')(mongoose);
 db.banks = require('./bank.model')(mongoose);
+db.connectaccounts = require('./connectaccount.model')(mongoose);
 db.wallets = require('./wallet.model')(mongoose);
 db.wallettrans = require('./wallettrans.model')(mongoose);
 db.payouttrans = require('./payouttrans.model')(mongoose);

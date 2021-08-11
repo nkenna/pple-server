@@ -4,6 +4,7 @@ const ResetCode = db.resetcodes;
 const Admin = db.admins;
 const Event = db.events;
 const Bank = db.banks;
+const ConnectedAccount = db.connectaccounts;
 const Wallet = db.wallets;
 const WalletTrans = db.wallettrans;
 const PayoutTrans = db.payouttrans;
@@ -96,6 +97,131 @@ exports.addHostAsCustomer = (req, res) => {
     });
 
      
+}
+
+exports.createHostStripeAccount = (req, res) => {
+    var result = {};    
+    var country = req.body.country;
+    var email = req.body.email;
+    var userId = req.body.userId;
+
+    if(!email){
+        result.status = "failed";
+        result.message = "email is required";
+        return res.status(400).send(result);
+    }
+
+    if(!country){
+        result.status = "failed";
+        result.message = "country is required";
+        return res.status(400).send(result);
+    }
+
+    if(country.length > 2){
+        result.status = "failed";
+        result.message = "this should be an ISO 3166-1 alpha-2 country code";
+        return res.status(400).send(result);
+    }
+
+    User.findOne({_id: userId})
+    .then(user => {
+        if(!user){
+            result.status = "failed";
+            result.message = "no user account found";
+            return res.status(404).send(result);
+        }
+
+        // add bank info to stripe
+        stripe.accounts.create(
+            {
+                type: 'custom',
+                country: country,
+                email: user.email,
+                business_profile: {
+                    name: user.firstname + " " + user.lastname
+                },
+                business_type: "individual",
+                individual: {
+                    email: user.email,
+                    first_name: user.firstname,
+                    last_name: user.lastname,
+                    phone: "202-555-0161",
+                    id_number: "223444555",
+                    dob: {
+                        day: 2,
+                        month: 2,
+                        year: 1990
+                    },
+                    address: {
+                        city: "addison",
+                        line1: "school",
+                        postal_code: "75001",
+                        state: "texas",
+
+                    },
+              
+                },
+                capabilities: {
+                    card_payments: {requested: true},
+                    transfers: {requested: true},
+            },
+          
+            }
+        )
+        .then(ccData => {
+            //console.log(ccData.login_links.url);
+            
+            if(ccData.id){// successful
+                // create new bank data
+                var cc = new ConnectedAccount({
+                    accountId: ccData.id,
+                    name: ccData.business_profile.name,
+                    accountType: ccData.type,
+                    country: ccData.country,
+                    currency: ccData.default_currency,
+                    email: ccData.email,
+                    created: ccData.created,
+                    //loginUrl: ccData.login_links.url,
+                    //timeZone: ccData.dashboard.timezone,
+                    userId: user._id,
+                    user: user._id
+                });
+
+                cc.save(cc)
+                .then(bk => {
+                    user.accountId = bk.accountId;
+                    user.connectedaccount = bk._id;
+
+                    User.updateOne({_id: user._id}, user)
+                    .then(wa => console.log("user updated"))
+                    .catch(err => console.log("error updating user"));
+
+                    result.status = "success";
+                    result.accountData = ccData;
+                    result.message = "stripe connected account info added successful";
+                    return res.status(200).send(result);
+                })
+                .catch(error => {
+                    result.status = "failed";
+                    result.message = "error saving stripe connected account";
+                    return res.status(500).send(result);
+                });
+            }
+        })
+        .catch(error => {
+            console.log(error);
+            result.status = "failed";
+            result.message = error.message;
+            return res.status(error.statusCode).send(result);
+        });
+    })
+    .catch(error => {
+        result.status = "failed";
+        result.message = "error finding user";
+        return res.status(500).send(result);
+    });
+
+    
 }
 
 exports.addHostBankInfo = (req, res) => {
@@ -379,20 +505,20 @@ exports.payoutHostTip = (req, res) => {
             }
 
             // check if host have bank info
-            Bank.findOne({customerId: host.stripeCustomerId})
+            ConnectedAccount.findOne({accountId: host.accountId})
             .then(bank => {
                 if(!bank){
                     result.status = "failed";
-                    result.message = "host bank info not found";
+                    result.message = "host stripe account info not found";
                     return res.status(404).send(result);
                 }
 
                 // payout from stripe
-                stripe.payouts.create({
+                stripe.transfers.create({
                     amount: amount * 100,
                     currency: 'usd',
                     description: 'pple host tip payout',
-                    destination: bank.stripeBankId,
+                    destination: bank.accountId,
 
                 })
                 .then(payoutData => {

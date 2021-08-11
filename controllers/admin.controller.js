@@ -5,6 +5,7 @@ const Admin = db.admins;
 const Event = db.events;
 const Wallet = db.wallets;
 const WalletTrans = db.wallettrans;
+const ChildTicket = db.childtickets;
 const Bank = db.banks;
 const os = require('os');
 var fs = require('fs');
@@ -18,6 +19,7 @@ var FormData = require('form-data')
 const bcrypt = require('bcrypt');
 const saltRounds = 10;
 const ExcelJS = require('exceljs');
+const { childtickets } = require("../models");
 
 
 exports.adminAllUsers = (req, res) => {
@@ -663,18 +665,37 @@ exports.dashboardData = (req, res) => {
     var pastDate = new Date(currentDate);
     pastDate.setDate(pastDate.getDate() - 30);
 
-    console.log(pastDate.toISOString());
-    
+    console.log(pastDate.toISOString());    
 
     Event.find({createdAt: {
         $gte: pastDate,
         $lte: currentDate
     }})
     .then(events => {
-        result.status = "success";
-        result.message = "data found";
-        result.events = events.length;
-        return res.status(200).send(result);
+        // find ticket sales
+        ChildTicket.find({createdAt: {
+            $gte: pastDate,
+            $lte: currentDate
+        }})
+        .then(cts => {
+            // calculate total earning both ticket sales and tips
+            var totalTicketSales = cts.reduce(function (total, currentValue) {
+                return total + currentValue.amount;
+            }, 0);
+            result.status = "success";
+            result.message = "data found";
+            result.ticketSales = cts.length;
+            result.events = events.length;
+            result.sumTotalEarning = totalTicketSales;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding sold tickets";
+            return res.status(500).send(result);
+        });
+        
     })
     .catch(err => {
         console.log(err);
@@ -719,6 +740,51 @@ exports.adminAllWallets = (req, res) => {
             return res.status(500).send(result);
         });
     })
+    
+    
+    
+}
+
+exports.adminAllTicketSales = (req, res) => {
+    var result = {};
+    var perPage = 10;
+    var page = req.query.page;
+
+    console.log(page);
+
+    if(!page){
+        page = 1;
+    }
+    console.log(page);
+
+    ChildTicket.find()
+    .then(initCts => {
+        ChildTicket.find()
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate('event', {ref: 1, title: 1, startDate: 1, endDate: 1})
+        .populate('ticket', {ref: 1, title: 1, paid: 1})
+        .sort('-createdAt')
+        .then(childtickets => {
+            result.status = "success";
+            result.message = "sold tickets found found: " + childtickets.length;
+            result.total = initCts.length;
+            result.soldTickets = childtickets;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding ticket sales";
+            return res.status(500).send(result);
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding ticket sales";
+        return res.status(500).send(result);
+    });
     
     
     

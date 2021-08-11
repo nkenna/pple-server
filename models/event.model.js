@@ -14,7 +14,10 @@ module.exports = mongoose => {
         timeToNextStartDate: { type: Number}, // if recurring, timeToNextStartDate specifies when it will be scheduled again
         timeToNextStartDateType: { type: String, default: "days" }, // if recurring, will it be reschuled in hours, days, weeks, months or years
         paid: { type: Boolean, default: false, require: true }, // true or false. this cannot be changed and all tickets under it must be paid or not
-        headerImage: { type: String, default: "https://backend.dakowa.com/media-header/dakowa_back.jpg" },
+        mediaPosition1: { type: String, default: "" },
+        mediaPosition2: { type: String, default: "" },
+        mediaPosition3: { type: String, default: "" },
+        mediaPosition4: { type: String, default: "" },
         status: { type: Boolean, default: true }, //activate and deactivate status
         virtual: { type: Boolean, default: true },
         virtualPlatform: { type: String, default: "" },

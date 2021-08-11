@@ -7,6 +7,7 @@ module.exports = app => {
     // create new user 
     router.post("/create-stripe-customer", host.addHostAsCustomer);
     router.post("/add-bank-to-stripe", host.addHostBankInfo);
+    router.post("/create-stripe-account", host.createHostStripeAccount);
     router.post("/add-wallet-to-host", host.addWalletToHost);
     router.post("/tip-host", host.tipHost);
     router.post("/pay-tip-host", host.payoutHostTip);

@@ -1,5 +1,6 @@
 module.exports = app => {
     const admins = require("../controllers/admin.controller");
+    const events = require("../controllers/event.controller");
     var router = require("express").Router();
     var tools = require('../config/utils');
 
@@ -24,6 +25,9 @@ module.exports = app => {
     router.get("/admin-all-events", admins.allEvents); 
     router.get("/admin-dashboard-data", admins.dashboardData); 
     router.post("/admin-search-users", admins.adminSearchUsers); 
+    router.get("/admin-all-ticket-sales", admins.adminAllTicketSales); 
+
+    router.post("/admin-create-event", events.createAdminEvent); 
 
       
     app.use('/api/v1/admin', router);
