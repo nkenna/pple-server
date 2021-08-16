@@ -738,18 +738,32 @@ exports.eventsByUser = (req, res) => {
     var result = {};
 
     var creatorId = req.body.creatorId;
-    
+    var page = req.query.page;
+    var perPage = 20;
 
     Event.find({creatorId: creatorId})
-    .populate("user", {password: 0, emailNotif: 0})
-    .populate("admin", {password: 0})
-    .populate("location")
-    .populate("tickets")
-    .then(events => {
-        result.status = "success";
-        result.events = events;
-        result.message = "events found: " + events.length;
-        return res.status(200).send(result);
+    .then(initEvents => {
+        Event.find({creatorId: creatorId})
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate("user", {password: 0, emailNotif: 0})
+        .populate("admin", {password: 0})
+        .populate("location")
+        .populate("tickets")
+        .sort('-createdAt')
+        .then(events => {
+            result.status = "success";
+            result.events = events;
+            result.total = initEvents.length;
+            result.message = "events found: " + events.length;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding user";
+            return res.status(500).send(result);
+        });
     })
     .catch(err => {
         console.log(err);
@@ -757,6 +771,7 @@ exports.eventsByUser = (req, res) => {
         result.message = "error occurred finding user";
         return res.status(500).send(result);
     });
+        
 }
 
 exports.eventsByRef = (req, res) => {
@@ -764,14 +779,20 @@ exports.eventsByRef = (req, res) => {
 
     var ref = req.body.ref;    
 
-    Event.find({ref: ref})
+    Event.findOne({ref: ref})
     .populate("user", {password: 0, emailNotif: 0})
     .populate("admin", {password: 0})
     .populate("location")
     .populate("tickets")
-    .then(events => {
+    .then(event => {
+        if(!event){
+            result.status = "failed";
+            result.message = "event not found"
+            return res.status(404).send(result);  
+        }
         result.status = "success";
-        result.message = "events found: " + events.length;
+        result.event = event;
+        result.message = "event found"
         return res.status(200).send(result);
     })
     .catch(err => {
@@ -787,7 +808,7 @@ exports.eventsById = (req, res) => {
 
     var eventId = req.body.eventId;    
 
-    Event.find({_id: eventId})
+    Event.findone({_id: eventId})
     .populate("user", {password: 0, emailNotif: 0})
     .populate("admin", {password: 0})
     .populate("location")
@@ -922,7 +943,6 @@ exports.editEventMedia = (req, res) => {
     });  
 }
 
-
 exports.buyTicket = async(req, res) => {
     var result = {};
 
@@ -966,7 +986,7 @@ exports.buyTicket = async(req, res) => {
                         console.log("this ticket data was not found");
                         result.status = "failed";
                         result.message = "this ticket data was not found so this operation cannot continue. please contact support.";
-                        return res.status(500).send(result);
+                        return res.status(404).send(result);
                     }
 
                     // ticket data was found so create child ticket with the required quantity
@@ -1062,5 +1082,375 @@ exports.buyTicket = async(req, res) => {
         return res.status(500).send(result);
     
     });
+}
+
+exports.buyTicketFree = async(req, res) => {
+    var result = {};
+
+    var email = req.body.email;
+    var firstname = req.body.firstname;
+    var lastname = req.body.lastname;
+    var phone = req.body.phone;
+    var eventId = req.body.eventId;
+    var userId = req.body.userId;
+    var ref = req.body.ref;
+
+    var ticketData = req.body.ticketData;
+    /**
+     * ticketdata is an array of object containing all that is needed to create child tickets
+     * its properties are:
+     * ticketId
+     * eventId
+     * ticketRef
+     * eventRef
+     * quantity 
+     */
+    
+
+    var cTickets = [];
+    var allGuests = [];
+    var notFoundError = false;
+    var paidTicketError = false;
+        
+    for(var i = 0; i < ticketData.length; i++){
+        try{
+            let t = await Ticket.findOne({_id: ticketData[i].ticketId}).exec();
+            console.log(t);
+            if(!t){
+                notFoundError = true;
+                break;
+            }
+
+            
+            if(t.paid == true){
+                paidTicketError = true;
+                break;
+            }            
+
+                // ticket data was found so create child ticket with the required quantity
+                for (let j = 0; j < ticketData[i].quantity; j++) {
+                    var childTicket = new ChildTicket({
+                        title: t.title,
+                        detail: t.detail,
+                        ref: t.ref.substring(10) + cryptoRandomString({length: 5, type: 'alphanumeric'}),
+                        creatorId: t.creatorId,
+                        eventId: t.eventId,
+                        amount: t.amount,
+                        startDate: t.startDate,
+                        endDate: t.endDate,
+                        paid: t.paid,
+                        status: true,
+                        event: t.eventId,
+                        ticket: t._id,
+                    });
+
+                    cTickets.push(childTicket);
+
+                    // increase ticket sold quantity
+                    t.soldTickets = t.soldTickets + 1;
+                    try{
+                        let tUpdate = await Ticket.findOne({_id: ticketData[i].ticketId}).exec();
+                        console.log("ticket sold quantity updated successfully");
+                    }
+                    catch(er){
+                        console.log(er);
+                    }
+                    
+
+                }
+
+                // save guest
+                var guest = new Guest({
+                    firstname: firstname,
+                    lastname: lastname,
+                    phone: phone,
+                    email: email,
+                    userId: userId,
+                    event: ticketData[i].eventId,
+                });
+
+                try{
+                    let nG = await guest.save(guest);
+                    console.log("saved event guest");
+                    console.log(nG);
+                }
+                catch(err){
+                    console.log(err);
+                }
+                
+        }
+           catch(error){
+            console.log(error);
+        };                   
+                            
+    }
+
+    // there was an error: a ticket here is not free
+    if(paidTicketError == true){
+        console.log("this ticket is a paid ticket");
+        result.status = "failed";
+        result.message = "this ticket is not free so this operation cannot continue. please contact support.";
+        return res.status(500).send(result);
+    }
+
+    if(notFoundError == true){
+        console.log("this ticket data was not found");
+        result.status = "failed";
+        result.message = "this ticket data was not found so this operation cannot continue. please contact support.";
+        return res.status(500).send(result);
+    }
+
+    for(var i = 0; i < cTickets.length; i++){
+        var ct = cTickets[i];
+        let nct =  await ct.save(ct);
+        console.log(nct);                
+    }
+
+        var allGuestEmails = [];
+        for(var i = 0; i < allGuests.length; i++){
+            var ct = allGuests[i];
+            allGuestEmails.push(ct.email);
+        }
+
+        //send email to guests who just bought tickets
+        //tools.sendEmailToMany(allGuestEmails, "Your Event Ticket", "Your ticket is ready on PPLE");
+        
+        result.status = "success";
+        result.message = "ticket sales was successful";
+        result.tickets = cTickets;
+        result.guests = allGuests;
+        //result.chargeData = chargeData;
+        return res.status(200).send(result);
+}
+
+exports.allEvents = (req, res) => {
+    var result = {};
+    var page = req.query.page;  
+    var perPage = 20;  
+
+    console.log(page);
+
+    if(!page){
+        page = 1;
+    }
+    console.log(page);
+
+    Event.find()
+    .then(initEvents => {
+        Event.find()
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate("user", {firstname: 1, lastname: 1, email: 1, avatar: 1})
+        .populate("admin", {password: 0})
+        .populate("location")
+        .populate("tickets")
+        .sort('-createdAt')
+        .limit(5)
+        .then(events => {
+            result.status = "success";
+            result.events = events;
+            result.total = initEvents.length;
+            result.message = "events found: " + events.length;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding user";
+            return res.status(500).send(result);
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user";
+        return res.status(500).send(result);
+    });
+
+    
+}
+
+exports.upComingEvents = (req, res) => {
+    var result = {};
+    var page = req.query.page;  
+    var perPage = 20;  
+
+    var currentDate = new Date();    
+    var useDate = new Date(currentDate);
+    useDate.setDate(useDate.getDate() - 21);
+
+    console.log(page);
+
+    if(!page){
+        page = 1;
+    }
+    console.log(page);
+
+    Event.find({startDate: {
+        $gte: useDate,
+        //$lte: currentDate
+    }})
+    .then(initEvents => {
+        Event.find({startDate: {
+            $gte: useDate,
+            //$lte: currentDate
+        }})
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate("user", {firstname: 1, lastname: 1, email: 1, avatar: 1})
+        .populate("admin", {password: 0})
+        .populate("location")
+        .populate("tickets")
+        .sort('-createdAt')
+        .limit(5)
+        .then(events => {
+            result.status = "success";
+            result.events = events;
+            result.total = initEvents.length;
+            result.message = "events found: " + events.length;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding user";
+            return res.status(500).send(result);
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user";
+        return res.status(500).send(result);
+    });
+
+    
+}
+
+exports.onGoingEvents = (req, res) => {
+    var result = {};
+    var page = req.query.page;  
+    var perPage = 20;  
+
+    var currentDate = new Date();    
+    var useDate = new Date(currentDate);
+    useDate.setDate(useDate.getDate() - 21);
+
+    console.log(page);
+
+    if(!page){
+        page = 1;
+    }
+    console.log(page);
+
+    Event.find({
+        startDate: {
+            //$gte: useDate,
+            $lte: currentDate
+        },
+        endDate: {
+            $gte: useDate,
+            //$lte: currentDate
+        },
+        
+    })
+    .then(initEvents => {
+        Event.find({
+            startDate: {
+                //$gte: useDate,
+                $lte: currentDate
+            },
+            endDate: {
+                $gte: useDate,
+                //$lte: currentDate
+            },
+            
+        })
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate("user", {firstname: 1, lastname: 1, email: 1, avatar: 1})
+        .populate("admin", {password: 0})
+        .populate("location")
+        .populate("tickets")
+        .sort('-createdAt')
+        .limit(5)
+        .then(events => {
+            result.status = "success";
+            result.events = events;
+            result.total = initEvents.length;
+            result.message = "events found: " + events.length;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding user";
+            return res.status(500).send(result);
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user";
+        return res.status(500).send(result);
+    });
+
+    
+}
+
+exports.pastEvents = (req, res) => {
+    var result = {};
+    var page = req.query.page;  
+    var perPage = 20;  
+
+    var currentDate = new Date();    
+    var useDate = new Date(currentDate);
+    useDate.setDate(useDate.getDate() - 21);
+
+    console.log(page);
+
+    if(!page){
+        page = 1;
+    }
+    console.log(page);
+
+    Event.find({endDate: {
+        //$gte: useDate,
+        $lte: currentDate
+    }})
+    .then(initEvents => {
+        Event.find({endDate: {
+            //$gte: useDate,
+            $lte: currentDate
+        }})
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate("user", {firstname: 1, lastname: 1, email: 1, avatar: 1})
+        .populate("admin", {password: 0})
+        .populate("location")
+        .populate("tickets")
+        .sort('-createdAt')
+        .then(events => {
+            result.status = "success";
+            result.events = events;
+            result.total = initEvents.length;
+            result.message = "events found: " + events.length;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding user";
+            return res.status(500).send(result);
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user";
+        return res.status(500).send(result);
+    });
+
+    
 }
 

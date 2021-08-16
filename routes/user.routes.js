@@ -15,7 +15,8 @@ module.exports = app => {
     router.post("/user-profile-by-email", users.userProfileByEmail);
     router.post("/user-profile-by-id", users.userProfileById);
     router.post("/edit-profile", users.editProfile);
-     
+    router.post("/edit-profile-avatar", users.editAvatar);
+    router.post("/resend-verify-email", users.resendVerification);
       
     app.use('/api/v1/user', router);
     

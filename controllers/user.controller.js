@@ -57,7 +57,7 @@ exports.createUser = (req, res) => {
             // Now we can store the password hash in db.
             if(err){
                 result.status = "failed";
-                result.message = "unknown error occurred - password hash failed";
+                result.message = "unknown error occurred with password";
                 return res.status(500).send(result);
             }
     
@@ -430,7 +430,7 @@ exports.sendResetEmail = (req, res) => {
             console.log("done creating verification code");
             var emailtext = "<p>You requested to reset your password. If you did not make this request, please contact support and change your password. If not, copy and paste this code on the required field: " +
             rc.code + "</p>" +
-            "<p>Dakowa Team</p>";
+            "<p>PPLE Team</p>";
             
             tools.sendEmail(
                 user.email,
@@ -442,8 +442,19 @@ exports.sendResetEmail = (req, res) => {
             result.message = "user reset password email sent";
             return res.status(200).send(result);
         })
-        .catch(err => console.log("error sending email"));      
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred saving reset code data";
+            return res.status(500).send(result);
+        });    
        
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user";
+        return res.status(500).send(result);
     });
 }
 
@@ -575,6 +586,7 @@ exports.editProfile = (req, res) => {
     var lastname = req.body.lastname;
     var phone = req.body.phone;
     var hostTip = req.body.hostTip;
+    var bio = req.body.bio;
     var userId = req.body.userId;
    
 
@@ -591,6 +603,7 @@ exports.editProfile = (req, res) => {
         user.lastname = lastname;
         user.phone = phone;
         user.hostTip = hostTip;
+        user.bio = bio;
         
         User.updateOne({_id: user._id}, user)
         .then(update => {
@@ -619,7 +632,7 @@ exports.editAvatar = (req, res) => {
 
    
     let uploadPath;
-    var userId = req.body.username;
+    var userId = req.body.userid;
     var avatar = req.files.avatar;    
 
     if (!req.files || Object.keys(req.files).length === 0) {
@@ -637,9 +650,9 @@ exports.editAvatar = (req, res) => {
             return res.status(404).send(result);
         }
 
-        uploadPath = path.join(__dirname, '/images/avatars/' +  avatar.name); //__dirname + '/images/avatars/' + avatar.name;
+        uploadPath = path.join(process.cwd(), '/media/images/avatars/' +  avatar.name); //__dirname + '/images/avatars/' + avatar.name;
         console.log(avatar.mimetype);
-        console.log(__dirname); 
+        console.log(process.cwd()); 
 
          // Use the mv() method to place the file somewhere on your server
         avatar.mv(uploadPath, function(err) {
@@ -663,7 +676,7 @@ exports.editAvatar = (req, res) => {
             }
             
             // we need to rename here   
-            var newPath = path.join(__dirname, '/images/avatars/' + newName);  
+            var newPath = path.join(process.cwd(), '/media/images/avatars/' + newName);  
             fs.rename(uploadPath, newPath, function(err) {
                 if (err) {
                     result.status = "failed";
@@ -673,7 +686,7 @@ exports.editAvatar = (req, res) => {
                 console.log("Successfully renamed the avatar!");
 
                 // update user avatar field
-                user.avatar = "https://api.pple.com/media-avatar/" + newName;
+                user.avatar = "/media-avatar/" + newName;
                 User.updateOne({username: user.username}, user)
                 .then(data => {
                     result.status = "success";

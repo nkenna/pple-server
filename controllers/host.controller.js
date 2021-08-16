@@ -6,6 +6,7 @@ const Event = db.events;
 const Bank = db.banks;
 const ConnectedAccount = db.connectaccounts;
 const Wallet = db.wallets;
+const TipData = db.tipdatas;
 const WalletTrans = db.wallettrans;
 const PayoutTrans = db.payouttrans;
 const os = require('os');
@@ -20,7 +21,6 @@ var FormData = require('form-data')
 const bcrypt = require('bcrypt');
 const saltRounds = 10;
 const ExcelJS = require('exceljs');
-
 const stripe = require('stripe')(process.env.STRIPE_API_KEY);
 
 exports.addHostAsCustomer = (req, res) => {
@@ -35,6 +35,7 @@ exports.addHostAsCustomer = (req, res) => {
         return res.status(400).send(result);
     }
 
+
     User.findOne({_id: hostId})
     .then(user => {
         if(!user){
@@ -46,7 +47,7 @@ exports.addHostAsCustomer = (req, res) => {
         if(user.isHost == false){
             result.status = "failed";
             result.message = "user is not yet a host";
-            return res.status(400).send(result);
+            return res.status(419).send(result);
         }
 
         // add user as a customer on stripe
@@ -94,9 +95,7 @@ exports.addHostAsCustomer = (req, res) => {
         result.status = "failed";
         result.message = "error finding user";
         return res.status(500).send(result);
-    });
-
-     
+    });     
 }
 
 exports.createHostStripeAccount = (req, res) => {
@@ -312,6 +311,84 @@ exports.addHostBankInfo = (req, res) => {
     
 }
 
+exports.addHostBankInfoViaBankId = (req, res) => {
+    var result = {};
+
+    var customerId = req.body.customerId;
+    var bankId = req.body.bankId;
+    var userId = req.body.userId;
+
+    if(!customerId){
+        result.status = "failed";
+        result.message = "stripe customer ID is required";
+        return res.status(400).send(result);
+    }
+
+    if(!bankId){
+        result.status = "failed";
+        result.message = "stripe bank ID is required";
+        return res.status(400).send(result);
+    }
+
+    User.findOne({_id: userId})
+    .then(user => {
+        if(!user){
+            result.status = "failed";
+            result.message = "no user account found";
+            return res.status(404).send(result);
+        }
+
+        // add bank info to stripe
+        stripe.customers.verifySource(
+            customerId,
+            bankId,
+            {amounts: [32, 45]}
+        )
+        .then(bankData => {
+            console.log(bankData);
+            if(bankData.id){// successful
+                // create new bank data
+                var bank = new Bank({
+                    accountName: bankData.account_holder_name,
+                    accountType: bankData.account_holder_type,
+                    accountNumber: bankData.accountNumber,
+                    bankName: bankName,
+                    country: bankData.country,
+                    currency: bankData.currency,
+                    customerId: bankData.customer,
+                    routingNumber: bankData.routing_number,
+                    stripeBankId: bankData.id,
+                    user: user._id
+                });
+
+                bank.save(bank)
+                .then(bk => {
+                    result.status = "success";
+                    result.message = "bank info added successful";
+                    return res.status(200).send(result);
+                })
+                .catch(error => {
+                    result.status = "failed";
+                    result.message = "error saving bank info";
+                    return res.status(500).send(result);
+                });
+            }
+        })
+        .catch(error => {
+            result.status = "failed";
+            result.message = error.message;
+            return res.status(err.statusCode).send(result);
+        });
+    })
+    .catch(error => {
+        result.status = "failed";
+        result.message = "error finding user";
+        return res.status(500).send(result);
+    });
+
+    
+}
+
 exports.tipHost = (req, res) => {
     var result = {};
 
@@ -325,82 +402,109 @@ exports.tipHost = (req, res) => {
         return res.status(400).send(result);
     }
 
-   User.findOne({_id: hostId})
-   .then(host => {
-        if(!host){
-            result.status = "failed";
-            result.message = "no host account found";
-            return res.status(404).send(result);
-        }
+    // create tip data
+    var tp = new TipData({
+        email: tipperEmail,
+        //amount: 
+        status: "pending", 
+        chargeId: chargeId,  
+       // user: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
+       // host: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
+    });
 
-        // find host wallet
-        Wallet.findOne({userId: host._id})
-        .then(wallet => {
-            if(!host){
-                result.status = "failed";
-                result.message = "no wallet found";
-                return res.status(404).send(result);
-            }
-
-            stripe.charges.retrieve(chargeId) 
-            .then(chargeData => {
-                if(chargeData.status == "succeeded"){
-                    var amount = chargeData.amount / 100;
-                    var ppleCommission = tools.calculateHostTipCommission(amount, 10);
-
-                    var netCharge = amount - ppleCommission;
-
-                    // credit user wallet
-                    wallet.balance = wallet.balance + netCharge;
-                    Wallet.updateOne({_id: wallet.id}, wallet)
-                    .then(wa => {
-                        console.log("wallet balance updated");
-
-                        // create wallet transactions
-                        var walletTrans = new WalletTrans({
-                            walletRef: wallet.walletRef,
-                            amount: netCharge,
-                            commission: ppleCommission,
-                            status: chargeData.status,
-                            type: "TIP",
-                            payerEmail: tipperEmail,   
-                            chargeId: chargeId, 
-                            wallet: wa._id,    
-                            user: host._id
-                        });
-
-                        walletTrans.save(walletTrans)
-                        .then(wt => console.log("wallet transaction created"))
-                        .catch(err => console.log("error creating wallet transaction "));
-
-                        result.status = "success";
-                        result.wallet = wa;
-                        result.message = "host tipped successfully";
-                        return res.status(200).send(result);
-                        
-                    })
-                    
+    tp.save(tp)
+    .then(tipData => { // tip data saved successfully, check verify tip
+        User.findOne({_id: hostId})
+        .then(host => {
+                if(!host){
+                    result.status = "failed";
+                    result.message = "no host account found";
+                    return res.status(404).send(result);
                 }
-            })
-            .catch(err => {
-                console.log(err);
-                result.status = "failed";
-                result.message = err.message;
-                return res.status(err.statusCode).send(result);
-            });
+
+                // find host wallet
+                Wallet.findOne({userId: host._id})
+                .then(wallet => {
+                    if(!host){
+                        result.status = "failed";
+                        result.message = "no wallet found";
+                        return res.status(404).send(result);
+                    }
+
+                    stripe.charges.retrieve(chargeId) 
+                    .then(chargeData => {
+                        if(chargeData.status == "succeeded"){
+                            var amount = chargeData.amount / 100;
+                            var ppleCommission = tools.calculateHostTipCommission(amount, 10);
+                            var netCharge = amount - ppleCommission;
+
+                            // credit user wallet
+                            wallet.balance = wallet.balance + netCharge;
+                            Wallet.updateOne({_id: wallet.id}, wallet)
+                            .then(wa => {
+                                console.log("wallet balance updated");
+
+                                // create wallet transactions
+                                var walletTrans = new WalletTrans({
+                                    walletRef: wallet.walletRef,
+                                    amount: netCharge,
+                                    commission: ppleCommission,
+                                    status: chargeData.status,
+                                    type: "TIP",
+                                    payerEmail: tipperEmail,   
+                                    chargeId: chargeId, 
+                                    wallet: wa._id,    
+                                    user: host._id
+                                });
+
+                                walletTrans.save(walletTrans)
+                                .then(wt => console.log("wallet transaction created"))
+                                .catch(err => console.log("error creating wallet transaction "));
+
+                                // update tip data
+                                tipData.amount = amount;
+                                tipData.host = host._id;
+                                TipData.updateOne({_id: tipData._id})
+                                .then(wt => console.log("tip data updated"))
+                                .catch(err => console.log("error updating tip data"));
+
+
+                                result.status = "success";
+                                result.wallet = wa;
+                                result.message = "host tipped successfully";
+                                return res.status(200).send(result);
+                                
+                            })
+                            
+                        }
+                    })
+                    .catch(err => {
+                        console.log(err);
+                        result.status = "failed";
+                        result.message = err.message;
+                        return res.status(err.statusCode).send(result);
+                    });
+                })
+                .catch(err => {
+                    console.log(err);
+                    result.status = "failed";
+                    result.message = "error finding wallet";
+                    return res.status(500).send(result);
+                });
         })
         .catch(err => {
-            console.log(err);
-            result.status = "failed";
-            result.message = "error finding wallet";
-            return res.status(500).send(result);
-        });
-   })
-   .catch(err => {
-    console.log(err);
-    result.status = "failed";
-    result.message = "error finding user";
-    return res.status(500).send(result);
+                console.log(err);
+                result.status = "failed";
+                result.message = "error finding user";
+                return res.status(500).send(result);
+            });
+
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error saving tip data";
+        return res.status(500).send(result);
     });
     
 }
@@ -594,4 +698,118 @@ exports.payoutHostTip = (req, res) => {
     });
     
 }
+
+exports.tipHostAnotherStyle = (req, res) => {
+    var result = {};
+
+    var hostId = req.body.hostId;
+    var chargeId = req.body.chargeId;
+    var tipperEmail = req.body.tipperEmail;
+
+    if(!chargeId){
+        result.status = "failed";
+        result.message = "stripe charge ID is required";
+        return res.status(400).send(result);
+    }
+
+    // create tip data
+    var tp = new TipData({
+        email: tipperEmail,
+        //amount: 
+        status: "pending", 
+        chargeId: chargeId,  
+       // user: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
+       // host: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
+    });
+
+    tp.save(tp)
+    .then(tipData => { // tip data saved successfully, check verify tip
+        User.findOne({_id: hostId})
+        .then(host => {
+                if(!host){
+                    result.status = "failed";
+                    result.message = "no host account found";
+                    return res.status(404).send(result);
+                }
+
+                // find host wallet
+                Wallet.findOne({userId: host._id})
+                .then(wallet => {
+                    if(!host){
+                        result.status = "failed";
+                        result.message = "no wallet found";
+                        return res.status(404).send(result);
+                    }
+
+                    stripe.charges.retrieve(chargeId) 
+                    .then(chargeData => {
+                        if(chargeData.status == "succeeded"){
+                            var amount = chargeData.amount / 100;
+                            var ppleCommission = tools.calculateHostTipCommission(amount, 10);
+
+                            var netCharge = amount - ppleCommission;
+
+                            // credit user wallet
+                            wallet.balance = wallet.balance + netCharge;
+                            Wallet.updateOne({_id: wallet.id}, wallet)
+                            .then(wa => {
+                                console.log("wallet balance updated");
+
+                                // create wallet transactions
+                                var walletTrans = new WalletTrans({
+                                    walletRef: wallet.walletRef,
+                                    amount: netCharge,
+                                    commission: ppleCommission,
+                                    status: chargeData.status,
+                                    type: "TIP",
+                                    payerEmail: tipperEmail,   
+                                    chargeId: chargeId, 
+                                    wallet: wa._id,    
+                                    user: host._id
+                                });
+
+                                walletTrans.save(walletTrans)
+                                .then(wt => console.log("wallet transaction created"))
+                                .catch(err => console.log("error creating wallet transaction "));
+
+                                result.status = "success";
+                                result.wallet = wa;
+                                result.message = "host tipped successfully";
+                                return res.status(200).send(result);
+                                
+                            })
+                            
+                        }
+                    })
+                    .catch(err => {
+                        console.log(err);
+                        result.status = "failed";
+                        result.message = err.message;
+                        return res.status(err.statusCode).send(result);
+                    });
+                })
+                .catch(err => {
+                    console.log(err);
+                    result.status = "failed";
+                    result.message = "error finding wallet";
+                    return res.status(500).send(result);
+                });
+        })
+        .catch(err => {
+                console.log(err);
+                result.status = "failed";
+                result.message = "error finding user";
+                return res.status(500).send(result);
+            });
+
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error saving tip data";
+        return res.status(500).send(result);
+    });
+    
+}
+
 
