@@ -6,8 +6,8 @@ module.exports = mongoose => {
         ref: { type: String, default: "", unique: true, require: true },
         creatorId: { type: String, default: "", require: true },
         creatorType: { type: String, default: "", require: true}, // admin or user
-        startDate: { type: String, default: "", require: true },
-        endDate: { type: String, default: "" },
+        startDate: Date,//{ type: String, default: "", require: true },
+        endDate: Date,//{ type: String, default: "" },
         maxTickets: { type: Number, default: 0 },
         soldTickets: { type: Number, default: 0 },
         recurring: { type: Boolean, default: false }, // if true, event start date will be resetted automattically
@@ -19,6 +19,7 @@ module.exports = mongoose => {
         mediaPosition3: { type: String, default: "" },
         mediaPosition4: { type: String, default: "" },
         status: { type: Boolean, default: true }, //activate and deactivate status
+        cancelled: { type: Boolean, default: false },
         virtual: { type: Boolean, default: true },
         virtualPlatform: { type: String, default: "" },
         virtualLink: { type: String, default: "" },

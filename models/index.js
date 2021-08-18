@@ -7,6 +7,7 @@ db.mongoose = mongoose;
 db.users = require('./user.model')(mongoose);
 db.events = require('./event.model')(mongoose);
 db.likes = require('./like.model')(mongoose);
+db.joins = require('./join.model')(mongoose);
 db.locations = require('./location.model')(mongoose);
 db.tickets = require('./ticket.model')(mongoose);
 db.childtickets = require('./childticket.model')(mongoose);

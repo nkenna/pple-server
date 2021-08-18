@@ -9,6 +9,7 @@ module.exports = mongoose => {
         verified: { type: Boolean, default: true },
         type: {type: String, default: "guest"},
         userId: { type: String, default: "" },
+        eventId: { type: String, default: "" },
         event: { type: mongoose.Schema.Types.ObjectId, ref: 'event'},
       },
       {timestamps: true}

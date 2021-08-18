@@ -2,6 +2,7 @@ const db = require("../models");
 const User = db.users;
 const Event = db.events;
 const Like = db.likes;
+const Join = db.joins;
 const os = require('os');
 var fs = require('fs');
 
@@ -151,3 +152,4 @@ exports.userLikedEvents = (req, res) => {
         return res.status(500).send(result);
     });
 }
+

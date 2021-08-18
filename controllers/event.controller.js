@@ -6,6 +6,7 @@ const Admin = db.admins;
 const Ticket = db.tickets;
 const ChildTicket = db.childtickets;
 const Guest = db.guests;
+const Join = db.joins;
 
 const os = require('os');
 var fs = require('fs');
@@ -21,8 +22,6 @@ const ExcelJS = require('exceljs');
 var AdminFB = require("firebase-admin");
 var axios = require('axios');
 const stripe = require('stripe')(process.env.STRIPE_API_KEY);
-
-//const stripe = require('stripe')(process.env.STRIPE_API_KEY);
 
 exports.createEvent = (req, res) => {
     var result = {};
@@ -568,6 +567,18 @@ exports.createEventTicket = (req, res) => {
             return res.status(404).send(result); 
         }
 
+        if(event.cancelled == true){
+            result.status = "failed";
+            result.message = "event have been cancelled. you cannot perform this operation";
+            return res.status(403).send(result);
+        }
+
+        if(event.status == false){
+            result.status = "failed";
+            result.message = "event have been flagged. you cannot perform this operation, contact pple support";
+            return res.status(403).send(result);
+        }
+
         // now create event
         var ticket = new Ticket({
             title: title,
@@ -950,11 +961,8 @@ exports.buyTicket = async(req, res) => {
     var firstname = req.body.firstname;
     var lastname = req.body.lastname;
     var phone = req.body.phone;
-    var eventId = req.body.eventId;
     var userId = req.body.userId;
-    var ref = req.body.ref;
     var chargeId = req.body.chargeId; // charge Id from Stripe
-
     var ticketData = req.body.ticketData;
     /**
      * ticketdata is an array of object containing all that is needed to create child tickets
@@ -977,49 +985,42 @@ exports.buyTicket = async(req, res) => {
             // charge was successful, lets create child ticket for user
             var cTickets = [];
             var allGuests = [];
-            
-            for(var i = 0; i < ticketData.length; i++){
+
+            Ticket.findOne({_id: ticketData.ticketId})
+            .then(t => {
+                console.log(t);
+                if(!t){
+                    console.log("this ticket data was not found");
+                    result.status = "failed";
+                    result.message = "this ticket data was not found so this operation cannot continue. please contact support.";
+                    return res.status(404).send(result);
+                }
+
+                var childTicket = new ChildTicket({
+                    title: t.title,
+                    detail: t.detail,
+                    ref: t.ref.substring(10) + cryptoRandomString({length: 5, type: 'alphanumeric'}),
+                    creatorId: t.creatorId,
+                    eventId: t.eventId,
+                    amount: t.amount,
+                    startDate: t.startDate,
+                    endDate: t.endDate,
+                    paid: t.paid,
+                    status: true,
+                    event: t.eventId,
+                    ticket: t._id,
+                });
+
                 try{
-                    let t = await Ticket.findOne({_id: ticketData[i].ticketId}).exec();
-                    console.log(t);
-                    if(!t){
-                        console.log("this ticket data was not found");
-                        result.status = "failed";
-                        result.message = "this ticket data was not found so this operation cannot continue. please contact support.";
-                        return res.status(404).send(result);
-                    }
+                    childTicket.save(childTicket)
+                    .then(ct => console.log("child ticket saved successfully"))
+                    .catch(err => console.log("child ticket created and saved"));
+                    
 
-                    // ticket data was found so create child ticket with the required quantity
-                    for (let j = 0; j < ticketData[i].quantity; j++) {
-                        var childTicket = new ChildTicket({
-                            title: t.title,
-                            detail: t.detail,
-                            ref: t.ref.substring(10) + cryptoRandomString({length: 5, type: 'alphanumeric'}),
-                            creatorId: t.creatorId,
-                            eventId: t.eventId,
-                            amount: t.amount,
-                            startDate: t.startDate,
-                            endDate: t.endDate,
-                            paid: t.paid,
-                            status: true,
-                            event: t.eventId,
-                            ticket: t._id,
-                        });
-
-                        cTickets.push(childTicket);
-
-                        // increase ticket sold quantity
-                        t.soldTickets = t.soldTickets + 1;
-                        try{
-                            let tUpdate = await Ticket.findOne({_id: ticketData[i].ticketId}).exec();
-                            console.log("ticket sold quantity updated successfully");
-                        }
-                        catch(er){
-                            console.log(er);
-                        }
-                        
-
-                    }
+                    t.soldTickets = t.soldTickets + 1;
+                    Ticket.updateOne({_id: t._id}, t)
+                    .then(cto => console.log("ticket sold quantity updated"))
+                    .catch(err => console.log("error updating ticket quantity"));
 
                     // save guest
                     var guest = new Guest({
@@ -1028,46 +1029,48 @@ exports.buyTicket = async(req, res) => {
                         phone: phone,
                         email: email,
                         userId: userId,
-                        event: ticketData[i].eventId,
+                        eventId: ticketData.eventId,
+                        event: ticketData.eventId,
                     });
 
-                    try{
-                        let nG = await guest.save(guest);
-                        console.log("saved event guest");
-                        console.log(nG);
-                    }
-                    catch(err){
-                        console.log(err);
-                    }
+                    guest.save(guest)
+                    .then(gu => console.log("event guest created"))
+                    .catch(err => console.log("error creating event guest"));
+
+                    var joinNew = new Join({
+                        eventId: t.eventId,
+                        userId: userId,
+                        event: t.eventId,
+                        user: userId
+                    });
+        
+                    joinNew.save(joinNew)
+                    .then(jn => console.log("join data created"))
+                    .catch(err => console.log("error creating join data"));
+
+                    // send email to guest and email
+                    var emailText = "<p>Hi,</p>" + 
+                                    "<p>Your ticket is ready on PPLE</p>";
                     
-                    }
-                    catch(error){
-                        console.log(error);
-                    };                   
-                                
-            }
+                    tools.sendEmail(email, "PPLE Event Ticket", emailText);
 
-            for(var i = 0; i < cTickets.length; i++){
-                var ct = cTickets[i];
-                let nct =  await ct.save(ct);
-                console.log(nct);                
-            }
-
-            var allGuestEmails = [];
-            for(var i = 0; i < allGuests.length; i++){
-                var ct = allGuests[i];
-                allGuestEmails.push(ct.email);
-            }
-
-            //send email to guests who just bought tickets
-            //tools.sendEmailToMany(allGuestEmails, "Your Event Ticket", "Your ticket is ready on PPLE");
+                    result.status = "success";
+                    result.message = "ticket sales was successful";
+                    result.ticket = childTicket;
+                    //result.chargeData = chargeData;
+                    return res.status(200).send(result);
+                }
+                catch(err){
+                    console.log("error saving child ticket: " + err.message);
+                } 
+            })
+            .catch(error => {
+                console.error(error);
+                result.status = "failed";
+                result.message = "error occurred finding ticket";
+                return res.status(500).send(result);    
+            });        
             
-            result.status = "success";
-            result.message = "ticket sales was successful";
-            result.tickets = cTickets;
-            result.guests = allGuests;
-            //result.chargeData = chargeData;
-            return res.status(200).send(result);
             
         } else{
             result.status = "failed";
@@ -1079,8 +1082,7 @@ exports.buyTicket = async(req, res) => {
         console.error(error.message);
         result.status = "failed";
         result.message = error.message;
-        return res.status(500).send(result);
-    
+        return res.status(500).send(result);    
     });
 }
 
@@ -1091,9 +1093,7 @@ exports.buyTicketFree = async(req, res) => {
     var firstname = req.body.firstname;
     var lastname = req.body.lastname;
     var phone = req.body.phone;
-    var eventId = req.body.eventId;
     var userId = req.body.userId;
-    var ref = req.body.ref;
 
     var ticketData = req.body.ticketData;
     /**
@@ -1107,57 +1107,47 @@ exports.buyTicketFree = async(req, res) => {
      */
     
 
-    var cTickets = [];
-    var allGuests = [];
-    var notFoundError = false;
-    var paidTicketError = false;
-        
-    for(var i = 0; i < ticketData.length; i++){
-        try{
-            let t = await Ticket.findOne({_id: ticketData[i].ticketId}).exec();
+     Ticket.findOne({_id: ticketData.ticketId})
+        .then(t => {
             console.log(t);
             if(!t){
-                notFoundError = true;
-                break;
+                console.log("this ticket data was not found");
+                result.status = "failed";
+                result.message = "this ticket data was not found so this operation cannot continue. please contact support.";
+                return res.status(404).send(result);
             }
 
-            
             if(t.paid == true){
-                paidTicketError = true;
-                break;
-            }            
+                console.log("this ticket is a paid ticket and not free");
+                result.status = "failed";
+                result.message = "this ticket is a paid ticket and should be be free";
+                return res.status(419).send(result);
+            }
 
-                // ticket data was found so create child ticket with the required quantity
-                for (let j = 0; j < ticketData[i].quantity; j++) {
-                    var childTicket = new ChildTicket({
-                        title: t.title,
-                        detail: t.detail,
-                        ref: t.ref.substring(10) + cryptoRandomString({length: 5, type: 'alphanumeric'}),
-                        creatorId: t.creatorId,
-                        eventId: t.eventId,
-                        amount: t.amount,
-                        startDate: t.startDate,
-                        endDate: t.endDate,
-                        paid: t.paid,
-                        status: true,
-                        event: t.eventId,
-                        ticket: t._id,
-                    });
+            var childTicket = new ChildTicket({
+                title: t.title,
+                detail: t.detail,
+                ref: t.ref.substring(10) + cryptoRandomString({length: 5, type: 'alphanumeric'}),
+                creatorId: t.creatorId,
+                eventId: t.eventId,
+                amount: t.amount,
+                startDate: t.startDate,
+                endDate: t.endDate,
+                paid: t.paid,
+                status: true,
+                event: t.eventId,
+                ticket: t._id,
+            });
 
-                    cTickets.push(childTicket);
+            try{
+                childTicket.save(childTicket)
+                .then(ct => console.log("child ticket saved successfully"))
+                .catch(err => console.log("child ticket created and saved"));
 
-                    // increase ticket sold quantity
-                    t.soldTickets = t.soldTickets + 1;
-                    try{
-                        let tUpdate = await Ticket.findOne({_id: ticketData[i].ticketId}).exec();
-                        console.log("ticket sold quantity updated successfully");
-                    }
-                    catch(er){
-                        console.log(er);
-                    }
-                    
-
-                }
+                t.soldTickets = t.soldTickets + 1;
+                Ticket.updateOne({_id: t._id}, t)
+                .then(ct => console.log("ticket sold quantity updated"))
+                .catch(err => console.log("error updating ticket quantity"));
 
                 // save guest
                 var guest = new Guest({
@@ -1166,61 +1156,48 @@ exports.buyTicketFree = async(req, res) => {
                     phone: phone,
                     email: email,
                     userId: userId,
-                    event: ticketData[i].eventId,
+                    eventId: ticketData.eventId,
+                    event: ticketData.eventId,
                 });
 
-                try{
-                    let nG = await guest.save(guest);
-                    console.log("saved event guest");
-                    console.log(nG);
-                }
-                catch(err){
-                    console.log(err);
-                }
+                guest.save(guest)
+                .then(gu => console.log("event guest created"))
+                .catch(err => console.log("error creating event guest"));
+
+                var joinNew = new Join({
+                    eventId: t.eventId,
+                    userId: userId,
+                    event: t.eventId,
+                    user: userId
+                });
+    
+                joinNew.save(joinNew)
+                .then(jn => console.log("join data created"))
+                .catch(err => console.log("error creating join data"));
+
+                // send email to guest and email
+                var emailText = "<p>Hi,</p>" + 
+                                "<p>Your ticket is ready on PPLE</p>";
                 
-        }
-           catch(error){
-            console.log(error);
-        };                   
-                            
-    }
+                tools.sendEmail(email, "PPLE Event Ticket", emailText);
 
-    // there was an error: a ticket here is not free
-    if(paidTicketError == true){
-        console.log("this ticket is a paid ticket");
-        result.status = "failed";
-        result.message = "this ticket is not free so this operation cannot continue. please contact support.";
-        return res.status(500).send(result);
-    }
-
-    if(notFoundError == true){
-        console.log("this ticket data was not found");
-        result.status = "failed";
-        result.message = "this ticket data was not found so this operation cannot continue. please contact support.";
-        return res.status(500).send(result);
-    }
-
-    for(var i = 0; i < cTickets.length; i++){
-        var ct = cTickets[i];
-        let nct =  await ct.save(ct);
-        console.log(nct);                
-    }
-
-        var allGuestEmails = [];
-        for(var i = 0; i < allGuests.length; i++){
-            var ct = allGuests[i];
-            allGuestEmails.push(ct.email);
-        }
-
-        //send email to guests who just bought tickets
-        //tools.sendEmailToMany(allGuestEmails, "Your Event Ticket", "Your ticket is ready on PPLE");
-        
-        result.status = "success";
-        result.message = "ticket sales was successful";
-        result.tickets = cTickets;
-        result.guests = allGuests;
-        //result.chargeData = chargeData;
-        return res.status(200).send(result);
+                result.status = "success";
+                result.message = "ticket sales was successful";
+                //result.tickets = ct;
+                //result.guests = allGuests;
+                //result.chargeData = chargeData;
+                return res.status(200).send(result);
+            }
+            catch(err){
+                console.log("error saving child ticket: " + err.message);
+            } 
+        })
+        .catch(error => {
+            console.error(error);
+            result.status = "failed";
+            result.message = "error occurred finding ticket";
+            return res.status(500).send(result);    
+        }); 
 }
 
 exports.allEvents = (req, res) => {
@@ -1277,23 +1254,30 @@ exports.upComingEvents = (req, res) => {
 
     var currentDate = new Date();    
     var useDate = new Date(currentDate);
-    useDate.setDate(useDate.getDate() - 21);
+    useDate.setDate(useDate.getDate() + 50);
+    currentDate.setDate(currentDate.getDate() - 2);
 
-    console.log(page);
+
+    console.log(currentDate);
+    console.log(useDate);
+
+    //console.log(page);
 
     if(!page){
         page = 1;
     }
     console.log(page);
+    //$gte: new Date(new Date(currentDate).setHours(00, 00, 00)),
+    //    $lt: new Date(new Date(useDate).setHours(00, 00, 00))
 
     Event.find({startDate: {
-        $gte: useDate,
-        //$lte: currentDate
+        $gte: currentDate,
+        $lt: useDate
     }})
     .then(initEvents => {
         Event.find({startDate: {
-            $gte: useDate,
-            //$lte: currentDate
+            $gte: currentDate,
+            $lt: useDate
         }})
         .skip((perPage * page) - perPage)
         .limit(perPage)
@@ -1302,7 +1286,6 @@ exports.upComingEvents = (req, res) => {
         .populate("location")
         .populate("tickets")
         .sort('-createdAt')
-        .limit(5)
         .then(events => {
             result.status = "success";
             result.events = events;
@@ -1333,8 +1316,7 @@ exports.onGoingEvents = (req, res) => {
     var perPage = 20;  
 
     var currentDate = new Date();    
-    var useDate = new Date(currentDate);
-    useDate.setDate(useDate.getDate() - 21);
+   
 
     console.log(page);
 
@@ -1349,7 +1331,7 @@ exports.onGoingEvents = (req, res) => {
             $lte: currentDate
         },
         endDate: {
-            $gte: useDate,
+            $gte: currentDate
             //$lte: currentDate
         },
         
@@ -1361,7 +1343,7 @@ exports.onGoingEvents = (req, res) => {
                 $lte: currentDate
             },
             endDate: {
-                $gte: useDate,
+                $gte: currentDate,
                 //$lte: currentDate
             },
             
@@ -1384,14 +1366,14 @@ exports.onGoingEvents = (req, res) => {
         .catch(err => {
             console.log(err);
             result.status = "failed";
-            result.message = "error occurred finding user";
+            result.message = "error occurred finding events";
             return res.status(500).send(result);
         });
     })
     .catch(err => {
         console.log(err);
         result.status = "failed";
-        result.message = "error occurred finding user";
+        result.message = "error occurred finding events";
         return res.status(500).send(result);
     });
 
@@ -1404,9 +1386,7 @@ exports.pastEvents = (req, res) => {
     var perPage = 20;  
 
     var currentDate = new Date();    
-    var useDate = new Date(currentDate);
-    useDate.setDate(useDate.getDate() - 21);
-
+ 
     console.log(page);
 
     if(!page){
@@ -1453,4 +1433,235 @@ exports.pastEvents = (req, res) => {
 
     
 }
+
+exports.userJoinedEvents = (req, res) => {
+    var result = {};
+
+    var userId = req.body.userId;
+    var eventId = req.body.eventId;
+
+    Join.find({userId: userId, eventId: eventId})
+    .populate("event")
+    .then(joins => {
+        result.status = "success";
+        result.joinedEvents = joins;
+        result.message = "joined events found: " + joins.length;
+        return res.status(200).send(result);
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user joined events";
+        return res.status(500).send(result);
+    });
+}
+
+exports.eventGuests = (req, res) => {
+    var result = {};
+
+    var eventId = req.body.eventId;
+
+    Guest.find({event: eventId})
+    .populate('event')
+    .then(guests => {
+        result.status = "success";
+        result.guests = guests;
+        result.message = "guests found: " + guests.length;
+        return res.status(200).send(result);
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding event guests";
+        return res.status(500).send(result);
+    });
+
+}
+
+exports.cancelledEvents = (req, res) => {
+    var result = {};
+    var page = req.query.page;  
+    var perPage = 20;
+    console.log(page);
+
+    if(!page){
+        page = 1;
+    }
+    console.log(page);
+
+    Event.find({cancelled: true})
+    .then(initEvents => {
+        Event.find({cancelled: true})
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate("user", {firstname: 1, lastname: 1, email: 1, avatar: 1})
+        .populate("admin", {password: 0})
+        .populate("location")
+        .populate("tickets")
+        .sort('-createdAt')
+        .then(events => {
+            result.status = "success";
+            result.events = events;
+            result.total = initEvents.length;
+            result.message = "events found: " + events.length;
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding user";
+            return res.status(500).send(result);
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user";
+        return res.status(500).send(result);
+    });
+
+    
+}
+
+exports.cancelEvent = (req, res) => {
+    var result = {};
+
+    var hostId = req.body.hostId;
+    var eventId = req.body.eventId;
+
+    Event.findOne({_id: eventId})
+    .then(event => {
+        if(!event){
+            result.status = "failed";
+            result.message = "event data not found";
+            return res.status(404).send(result);
+        }
+      
+
+        // event was found. Check if event belongs to host
+        User.findOne({_id: hostId})
+        .then(host => {
+            if(!host){
+                result.status = "failed";
+                result.message = "host data not found";
+                return res.status(404).send(result);
+            }
+            console.log(host._id);
+            console.log(event.creatorId);
+
+            if(host._id != event.creatorId){
+                result.status = "failed";
+                result.message = "this event was not created by this host. You cannot perform this operation.";
+                return res.status(403).send(result);
+            }
+
+            if(host.cancelled == true){
+                result.status = "failed";
+                result.message = "event have been cancelled already";
+                return res.status(400).send(result);
+            }
+
+            event.cancelled = true;
+            Event.updateOne({_id: event._id}, event)
+            .then(data => {
+                console.log(data);
+                result.status = "success";
+                result.message = "event have been cancelled successfully";
+                return res.status(200).send(result);
+            })
+            .catch(err => {
+                console.log(err);
+                result.status = "failed";
+                result.message = "error occurred cancelling event";
+                return res.status(500).send(result);
+            });
+
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding host";
+            return res.status(500).send(result);
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding event";
+        return res.status(500).send(result);
+    });
+}
+
+/**
+ * for(var i = 0; i < ticketData.length; i++){
+                try{
+                    let t = await Ticket.findOne({_id: ticketData[i].ticketId}).exec();
+                    console.log(t);
+                    if(!t){
+                        console.log("this ticket data was not found");
+                        result.status = "failed";
+                        result.message = "this ticket data was not found so this operation cannot continue. please contact support.";
+                        return res.status(404).send(result);
+                    }
+
+                    // ticket data was found so create child ticket with the required quantity
+                    for (let j = 0; j < ticketData[i].quantity; j++) {
+                        var childTicket = new ChildTicket({
+                            title: t.title,
+                            detail: t.detail,
+                            ref: t.ref.substring(10) + cryptoRandomString({length: 5, type: 'alphanumeric'}),
+                            creatorId: t.creatorId,
+                            eventId: t.eventId,
+                            amount: t.amount,
+                            startDate: t.startDate,
+                            endDate: t.endDate,
+                            paid: t.paid,
+                            status: true,
+                            event: t.eventId,
+                            ticket: t._id,
+                        });
+
+                        cTickets.push(childTicket);
+
+                        // increase ticket sold quantity
+                        t.soldTickets = t.soldTickets + 1;
+                        try{
+                            let tUpdate = await Ticket.findOne({_id: ticketData[i].ticketId}).exec();
+                            console.log("ticket sold quantity updated successfully");
+                        }
+                        catch(er){
+                            console.log(er);
+                        }
+                        
+
+                    }
+
+                    
+
+                                       
+                    
+                    }
+                    catch(error){
+                        console.log(error);
+                    };                   
+                                
+            }
+
+            
+            var allGuestEmails = [];
+            for(var i = 0; i < allGuests.length; i++){
+                var ct = allGuests[i];
+                allGuestEmails.push(ct.email);
+            }
+
+            //send email to guests who just bought tickets
+            //tools.sendEmailToMany(allGuestEmails, "Your Event Ticket", "Your ticket is ready on PPLE");
+            
+            result.status = "success";
+            result.message = "ticket sales was successful";
+            result.tickets = cTickets;
+            result.guests = allGuests;
+            //result.chargeData = chargeData;
+            return res.status(200).send(result);
+ */
 
