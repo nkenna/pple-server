@@ -500,6 +500,127 @@ exports.createAdminEvent = (req, res) => {
 
 }
 
+exports.quickCreateEvent = (req, res) => {
+    var result = {};
+
+    var title = req.body.title;
+    var detail = req.body.detail;
+    var startDate = req.body.startDate;
+    var endDate = req.body.endDate;
+    var paid = req.body.paid;
+    var creatorId = req.body.creatorId;
+    var creatorType = req.body.creatorType;
+    //var location = req.body.location;
+
+    /*if(!location){
+        result.status = "failed";
+        result.message = "event location is required";
+        return res.status(400).send(result);
+    }
+
+    if(location && (!location.address || !location.city)){
+        result.status = "failed";
+        result.message = "event city and address is required";
+        return res.status(400).send(result);
+    } */
+
+
+    if(!title){
+        result.status = "failed";
+        result.message = "event title is required";
+        return res.status(400).send(result);
+    }
+
+    if(paid == null){
+        result.status = "failed";
+        result.message = "this event must be paid or not paid";
+        return res.status(400).send(result);
+    }
+
+    if(!creatorId){
+        result.status = "failed";
+        result.message = "creatorId is required";
+        return res.status(400).send(result);
+    }
+
+    if(!creatorType){
+        result.status = "failed";
+        result.message = "creatorType is required";
+        return res.status(400).send(result);
+    }
+
+    if(!startDate){
+        result.status = "failed";
+        result.message = "event start date is required";
+        return res.status(400).send(result);
+    }
+
+    var ref = creatorId.substring(0, 8) + cryptoRandomString({length: 8, type: 'alphanumeric'});
+
+    Admin.findOne({_id: creatorId})
+    .then(user => {
+        if(!user){
+            result.status = "failed";
+            result.message = "this host data was not found";
+            return res.status(404).send(result);
+        }
+
+       
+        
+        // this event host was found so continue
+        var event = new Event({
+            title: title,
+            detail: detail,
+            ref: ref,
+            creatorId: creatorId,
+            creatorType: creatorType,
+            startDate: startDate,
+            endDate: endDate,
+            recurring: false,
+            //timeToNextStartDate: timeToNextStartDate,
+            //timeToNextStartDateType: timeToNextStartDateType,
+            paid: paid,
+            virtual: false,
+            quickAdd: true,
+            status: false,
+            //virtualPlatform: virtualPlatform,
+            //virtualLink: virtualLink,
+            eventInviteLink: ref,
+            admin: user._id,
+            //location: newLoc._id,
+        });
+
+        event.save(event)
+        .then(newEvent => {
+            
+            result.status = "success";
+            result.event = newEvent;
+            result.message = "new event created successfully";
+            return res.status(200).send(result);
+
+            
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred creating event";
+            return res.status(500).send(result);
+        }); 
+
+
+        
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding this host data";
+        return res.status(500).send(result);
+    });  
+
+
+
+}
+
 exports.createEventTicket = (req, res) => {
     var result = {};
 
@@ -586,7 +707,7 @@ exports.createEventTicket = (req, res) => {
             ref: ref,
             creatorId: creatorId,
             eventId: eventId,
-            amount: amount,
+            amount: paid == true ? amount : 0,
             startDate: startDate,
             endDate: endDate,
             maxTickets: maxTickets,
@@ -743,6 +864,82 @@ exports.editEvent = (req, res) => {
 
 
 
+}
+
+exports.editEventLocation = (req, res) => {
+    var result = {};
+
+    var location = req.body.location;
+    var eventId = req.body.eventId;
+
+    Location.findOne({eventId: eventId})
+    .then(locat => {
+        Event.findOne({_id: eventId})
+        .then(event => {
+            if(!event){
+                result.status = "failed";
+                result.message = "event data not found";
+                return res.status(404).send(result);
+            }
+
+            if(!locat){ // location not found, create a new one
+                var loc = new Location({
+                    country: location.country,
+                    state: location.state,
+                    city: location.city,
+                    address: location.address,
+                    landmark: location.landmark,
+                    lat: location.lat,
+                    lon: location.lon,
+                    eventId: event._id,
+                    event: eventId,                
+                });
+    
+                loc.save(loc)
+                .then(newLoc => {
+                    event.location = newLoc._id;
+
+                    Event.updateOne({_id: event._id}, event)
+                    .then(data => console.log("event location updated successfully"))
+                    .catch(err => console.log("error updating event location: " + err.message));
+                })
+            }else{ //location was found, update it
+                locat.country = location.country;
+                locat.state = location.state;
+                locat.city = location.city;
+                locat.address = location.address;
+                locat.landmark = location.landmark;
+                locat.lat = location.lat;
+                locat.lon = location.lon;
+                locat.eventId = event._id;
+                locat.event =  eventId;
+                
+                Location.updateOne({_id: location._id}, location)
+                .then(data => console.log("location updated successfully"))
+                .catch(err => console.log("error updating location: " + err.message));
+                
+            }
+
+            result.status = "success";
+            result.message = "event location updated successfully";
+            return res.status(200).send(result);
+
+
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding event";
+            return res.status(500).send(result);
+        });
+        
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding event location data";
+        return res.status(500).send(result);
+    });
 }
 
 exports.eventsByUser = (req, res) => {

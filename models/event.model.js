@@ -20,6 +20,7 @@ module.exports = mongoose => {
         mediaPosition4: { type: String, default: "" },
         status: { type: Boolean, default: true }, //activate and deactivate status
         cancelled: { type: Boolean, default: false },
+        quickAdd: { type: Boolean, default: false },
         virtual: { type: Boolean, default: true },
         virtualPlatform: { type: String, default: "" },
         virtualLink: { type: String, default: "" },

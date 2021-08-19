@@ -612,6 +612,28 @@ exports.allEventsDashboard = (req, res) => {
     });
 }
 
+exports.allTicketSoldDashboard = (req, res) => {
+    var result = {};    
+
+    ChildTicket.find()
+    .populate("event")
+    .populate("ticket")
+    .sort('-createdAt')
+    .limit(5)
+    .then(cts => {
+        result.status = "success";
+        result.dashboardTickets = cts;
+        result.message = "tickets found: " + cts.length;
+        return res.status(200).send(result);
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding sold tickets";
+        return res.status(500).send(result);
+    });
+}
+
 exports.allEvents = (req, res) => {
     var result = {};
     var page = req.query.page;  

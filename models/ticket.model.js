@@ -7,8 +7,8 @@ module.exports = mongoose => {
         creatorId: { type: String, default: "", require: true },
         eventId: { type: String, default: "" },
         amount: { type: Number, default: 0 },
-        startDate: { type: String, default: "", require: true },
-        endDate: { type: String, default: "" },
+        startDate: { type: Date, require: true },
+        endDate: { type: Date },
         maxTickets: { type: Number, default: 0 },
         soldTickets: { type: Number, default: 0 },
         paid: { type: Boolean, default: false, require: true }, // true or false. this cannot be changed and all tickets under it must be paid or not

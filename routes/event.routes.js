@@ -8,6 +8,7 @@ module.exports = app => {
     // create new user 
     router.post("/create-event", tools.authenticateToken, events.createEvent);
     router.post("/edit-event", tools.authenticateToken, events.editEvent);
+    router.post("/edit-event-location", tools.authenticateToken, events.editEventLocation);
     router.post("/create-ticket", tools.authenticateToken, events.createEventTicket);
     router.post("/events-by-host", events.eventsByUser);
     router.post("/event-by-ref", events.eventsByRef);
