@@ -25,11 +25,19 @@ exports.createUser = (req, res) => {
     var phone = req.body.phone;
     var email = req.body.email;
     var password = req.body.password;
+    //var username = req.body.username;
+
     
     
     if(!email){
         result.status = "failed";
         result.message = "email is required";
+        return res.status(400).send(result);
+    }
+
+    if(!username){
+        result.status = "failed";
+        result.message = "username is required";
         return res.status(400).send(result);
     }
 
@@ -45,88 +53,186 @@ exports.createUser = (req, res) => {
         return res.status(400).send(result);
     }
 
-    User.findOne({ email: {$regex : email, $options: 'i'}})
-    .then(userd => {
-        if(userd){
+    User.findOne({username: {$regex: username, $options: 'i'}})
+    .then(userWithUsername => {
+        if(userWithUsername){
             result.status = "failed";
-            result.message = "email already exist. Try another email or login with this account";
+            result.message = "username already taken. Try another one";
             return res.status(409).send(result); 
         }
 
-        bcrypt.hash(password, saltRounds, (err, hash) => {
-            // Now we can store the password hash in db.
-            if(err){
+        User.findOne({ email: {$regex : email, $options: 'i'}})
+        .then(userd => {
+            if(userd){
                 result.status = "failed";
-                result.message = "unknown error occurred with password";
-                return res.status(500).send(result);
+                result.message = "email already exist. Try another email or login with this account";
+                return res.status(409).send(result); 
             }
-    
-            var newUser = new User({
-                firstname: firstname,
-                lastname: lastname,
-                phone: phone,
-                email: email,
-                password: hash
-            });
 
-                
-            newUser.save(newUser)
-            .then(user => {
-                // create user wallet
-                var wallet = new Wallet({
-                    walletRef: cryptoRandomString({length: 6, type: 'alphanumeric'}) + cryptoRandomString({length: 6, type: 'alphanumeric'}),
-                    userId: user._id,
-                    user: user._id
+            bcrypt.hash(password, saltRounds, (err, hash) => {
+                // Now we can store the password hash in db.
+                if(err){
+                    result.status = "failed";
+                    result.message = "unknown error occurred with password";
+                    return res.status(500).send(result);
+                }
+        
+                var newUser = new User({
+                    firstname: firstname,
+                    lastname: lastname,
+                    phone: phone,
+                    email: email,
+                    password: hash,
+                    username: username
                 });
 
-                wallet.save(wallet)
-                .then(wa => {
-                    console.log("user wallet created");
-                    user.wallet = wa._id;
-                    User.updateOne({_id: user._id}, user)
-                    .then(wa => console.log("user updated"))
-                    .catch(err => console.log("error updating user"));
-
-                })
-                .catch(err => console.log("error creating wallet"));
-
-               
                     
-                // send verification email
-                var vcode = new VerifyCode({
-                    code: cryptoRandomString({length: 6, type: 'alphanumeric'}),
-                    email: user.email,
-                    userId: user._id
-                });
-    
-                vcode.save(vcode)
-                .then(vc => {
-                    console.log("done creating verification code");
-                  
-                    var emailtext = "<p>To verify your account. Click on this link or copy to your browser: " +
-                    "https://pple.com/verify-account/" + vc.code + "</p>";
+                newUser.save(newUser)
+                .then(user => {
+                    // create user wallet
+                    var wallet = new Wallet({
+                        walletRef: cryptoRandomString({length: 6, type: 'alphanumeric'}) + cryptoRandomString({length: 6, type: 'alphanumeric'}),
+                        userId: user._id,
+                        user: user._id
+                    });
 
-                    tools.sendEmail(
-                        user.email,
-                        "New PPLE Account Verification",
-                        emailtext
-                    );
-                })
-                .catch(err => console.log("error sending email"));
-    
+                    wallet.save(wallet)
+                    .then(wa => {
+                        console.log("user wallet created");
+                        user.wallet = wa._id;
+                        User.updateOne({_id: user._id}, user)
+                        .then(wa => console.log("user updated"))
+                        .catch(err => console.log("error updating user"));
+
+                    })
+                    .catch(err => console.log("error creating wallet"));
+
                 
-                result.status = "success";
-                result.message = "user account created successfully";
-                return res.status(200).send(result);
+                        
+                    // send verification email
+                    var vcode = new VerifyCode({
+                        code: cryptoRandomString({length: 6, type: 'alphanumeric'}),
+                        email: user.email,
+                        userId: user._id
+                    });
+        
+                    vcode.save(vcode)
+                    .then(vc => {
+                        console.log("done creating verification code");
+                    
+                        var emailtext = "<p>To verify your account. Click on this link or copy to your browser: " +
+                        "https://pple.com/verify-account/" + vc.code + "</p>";
+
+                        tools.sendEmail(
+                            user.email,
+                            "New PPLE Account Verification",
+                            emailtext
+                        );
+                    })
+                    .catch(err => console.log("error sending email"));
+        
+                    
+                    result.status = "success";
+                    result.message = "user account created successfully";
+                    return res.status(200).send(result);
+                });
             });
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding this email";
+            return res.status(500).send(result);
+        });  
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding this username";
+        return res.status(500).send(result);
+    });  
+
+      
+}
+
+exports.startEnable2FAOnUser = (req, res) => {
+    var result = {};
+
+    var userId = req.body.userId;
+    var phone = req.body.phone;
+
+    if(!phone){
+        result.status = "failed";
+        result.message = "phone is required";
+        return res.status(400).send(result);
+    }
+
+    if(!userId){
+        result.status = "failed";
+        result.message = "userId is required";
+        return res.status(400).send(result);
+    }
+
+
+}
+
+exports.addUsernameToUser = (req, res) => {
+    var result = {};
+
+    var userId = req.body.userId;
+    var username = req.body.username;
+
+    if(!username){
+        result.status = "failed";
+        result.message = "username is required";
+        return res.status(400).send(result);
+    }
+
+    User.findOne({username: {$regex: username, $options: 'i'}})
+    .then(exists => {
+        if(exists){
+            result.status = "failed";
+            result.message = "username already taken. Try another one";
+            return res.status(409).send(result); 
+        }
+
+        User.findOne({_id: userId})
+        .then(user => {
+            if(!user){
+                result.status = "failed";
+                result.message = "user does not exist";
+                return res.status(404).send(result); 
+            }
+
+            //update user's username
+            user.username = username;
+            User.updateOne({_id: user._id}, user)
+            .then(data => {
+                result.status = "success";
+                result.message = "username successfully added";
+                return res.status(200).send(result); 
+            })
+            .catch(err => {
+                console.log(err);
+                result.status = "failed";
+                result.message = "error occurred creating username";
+                return res.status(500).send(result);
+            });
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding user";
+            return res.status(500).send(result);
         });
     })
     .catch(err => {
         console.log(err);
         result.status = "failed";
-        result.message = "error occurred finding this email";
+        result.message = "error occurred finding this username";
         return res.status(500).send(result);
-    });    
+    });
+
 }
 
 exports.verifyUser = (req, res) => {
@@ -585,7 +691,7 @@ exports.editProfile = (req, res) => {
     var firstname = req.body.firstname;
     var lastname = req.body.lastname;
     var phone = req.body.phone;
-    var hostTip = req.body.hostTip;
+    //var hostTip = req.body.hostTip;
     var bio = req.body.bio;
     var userId = req.body.userId;
    
@@ -602,7 +708,7 @@ exports.editProfile = (req, res) => {
         user.firstname = firstname;
         user.lastname = lastname;
         user.phone = phone;
-        user.hostTip = hostTip;
+        //user.hostTip = hostTip;
         user.bio = bio;
         
         User.updateOne({_id: user._id}, user)

@@ -1,19 +1,20 @@
 module.exports = mongoose => {
     var schema = mongoose.Schema(
       {
-        firstname: { type: String, default: "" },
-        lastname: { type: String, default: "" },
-        phone: { type: String, default: "" },
-        email: { type: String, default: "" },
-        password: { type: String, default: "" },
-        avatar: { type: String, default: "https://backend.dakowa.com/media-header/african.png" },
+        firstname: { type: String},
+        lastname: { type: String},
+        phone: { type: String},
+        username: { type: String},
+        email: { type: String},
+        password: { type: String},
+        avatar: { type: String},
         status: { type: Boolean, default: true }, //activate and deactivate user
         emailNotif: { type: Boolean, default: true }, // true: user recieves email notification
         verified: { type: Boolean, default: false },
+        enable2FA: { type: Boolean, default: false },
         isHost: { type: Boolean, default: false },
-        stripeCustomerId: { type: String, default: "" },
-        accountId: { type: String, default: "" },
-        hostTip: { type: Number, default: 5 }, // default tip amount is $5
+        stripeCustomerId: { type: String},
+        accountId: { type: String},
         type: {type: String, default: "user"}, // user or admin
         events: [{ type: mongoose.Schema.Types.ObjectId, ref: 'event'}],
         bank: { type: mongoose.Schema.Types.ObjectId, ref: 'bank'},
@@ -30,7 +31,7 @@ module.exports = mongoose => {
       return object;
     });
 
-    schema.index({ firstname: 'text'});
+    schema.index({ firstname: 'text', lastname: 'text', username: 'text'});
   
     const User = mongoose.model("user", schema);
     return User;

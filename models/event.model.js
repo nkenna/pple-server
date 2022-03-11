@@ -25,6 +25,7 @@ module.exports = mongoose => {
         virtualPlatform: { type: String, default: "" },
         virtualLink: { type: String, default: "" },
         eventInviteLink: { type: String, default: "" },
+        hostTip: { type: Number, default: 5 }, // default tip amount is $5
         tickets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ticket'}],
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
         admin: { type: mongoose.Schema.Types.ObjectId, ref: 'admin'},
