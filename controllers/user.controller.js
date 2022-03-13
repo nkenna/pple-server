@@ -106,6 +106,33 @@ exports.createUser = (req, res) => {
 
                     })
                     .catch(err => console.log("error creating wallet"));
+                    
+                    // creating stripe customer
+                    stripe.customers.create({
+                        description: "PPLE Event host",
+                        name: user.firstname + " " + user.lastname,
+                        email: user.email,
+                    })
+                    .then(customerData => {
+                        console.log(customerData);
+            
+                        if(customerData.id){
+                            //var stripeData = customerData.stripeCustomer;
+            
+                            //update customer ID of user
+                            user.stripeCustomerId = customerData.id;
+            
+                            User.updateOne({_id: user._id}, user)
+                            .then(da => console.log("user have been updated"))
+                            .catch(err => console.log("error occurred updating user"));
+                        }else{
+                            result.status = "failed";
+                            result.message = "stripe operation failed";
+                            return res.status(400).send(result);
+                        }
+                        
+                    })
+                    .catch(err => console.log("error creating strip customer: " + err));
 
                 
                         
@@ -121,7 +148,7 @@ exports.createUser = (req, res) => {
                         console.log("done creating verification code");
                     
                         var emailtext = "<p>To verify your account. Click on this link or copy to your browser: " +
-                        "https://pple.com/verify-account/" + vc.code + "</p>";
+                        "https://pple.com/verify-account/" + vc.code + " or paste this code on the provided field: "+ vc.code + " </p>";
 
                         tools.sendEmail(
                             user.email,
@@ -129,7 +156,7 @@ exports.createUser = (req, res) => {
                             emailtext
                         );
                     })
-                    .catch(err => console.log("error sending email"));
+                    .catch(err => console.log("error sending email: " + err));
         
                     
                     result.status = "success";
@@ -816,6 +843,62 @@ exports.editAvatar = (req, res) => {
         result.message = "error occurred finding user";
         return res.status(500).send(result);
     });  
+}
+
+exports.addCustomerCard = (req, res) => {
+    var result = {};
+
+    var userId = req.body.userId;
+    var cardNumber = req.body.cardNumber;
+    var expiryMonth = req.body.expiryMonth;
+    var expiryYear = req.body.expiryYear;
+    var cardCVV = req.body.cardCVV; // must be string
+
+
+    if(!cardNumber){
+        result.status = "failed";
+        result.message = "card number field is required";
+        return res.status(400).send(result); 
+    }
+
+    if(!cardCVV){
+        result.status = "failed";
+        result.message = "card cvv field is required";
+        return res.status(400).send(result); 
+    }
+
+    if(!expiryMonth){
+        result.status = "failed";
+        result.message = "card expiry month field is required";
+        return res.status(400).send(result); 
+    }
+
+    if(!expiryYear){
+        result.status = "failed";
+        result.message = "card expiry year field is required";
+        return res.status(400).send(result); 
+    }
+
+    User.findOne({_id: userId})
+    .then(user => {
+        if(!user){
+            result.status = "failed";
+            result.message = "user not foud";
+            return res.status(404).send(result); 
+        }
+
+        stripe.tokens.create({
+            card: {
+                number: cardNumber,
+                exp_month: expiryMonth,
+                exp_year: expiryYear,
+                cvc: cardCVV
+            }
+        })
+        .then(tokenData => {
+            
+        })
+    })
 }
 
 

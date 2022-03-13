@@ -67,7 +67,7 @@ exports.addHostAsCustomer = (req, res) => {
 
                 User.updateOne({_id: user._id}, user)
                 .then(da => console.log("user have been updated"))
-                .catch(err => console.log("error occurred udating user"));
+                .catch(err => console.log("error occurred updating user"));
 
                 result.status = "success";
                 result.message = "host added as stripe customer";
