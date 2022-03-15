@@ -40,6 +40,8 @@ exports.createEvent = (req, res) => {
     var virtualPlatform = req.body.virtualPlatform;
     var virtualLink = req.body.virtualLink;
     var location = req.body.location;
+    var welcomeMsg = req.body.welcomeMsg;
+    var privateEvent = req.body.privateEvent;
 
     if(virtual == null){
         result.status = "failed";

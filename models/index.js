@@ -20,6 +20,10 @@ db.wallets = require('./wallet.model')(mongoose);
 db.tipdatas = require('./tipdata.model')(mongoose);
 db.wallettrans = require('./wallettrans.model')(mongoose);
 db.payouttrans = require('./payouttrans.model')(mongoose);
+db.cards = require('./card.model')(mongoose);
+db.invites = require('./invite.model')(mongoose);
+db.devices = require('./device.model')(mongoose);
+db.notifications = require('./notification.model')(mongoose);
 
 db.admins = require('./admin.model')(mongoose);
 

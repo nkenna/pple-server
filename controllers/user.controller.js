@@ -1,8 +1,10 @@
 const db = require("../models");
 const User = db.users;
 const Wallet = db.wallets;
+const Card = db.cards;
 const VerifyCode = db.verifycodes;
 const ResetCode = db.resetcodes;
+const Device = db.devices;
 
 const os = require('os');
 var fs = require('fs');
@@ -853,6 +855,8 @@ exports.addCustomerCard = (req, res) => {
     var expiryMonth = req.body.expiryMonth;
     var expiryYear = req.body.expiryYear;
     var cardCVV = req.body.cardCVV; // must be string
+    var nameOnCard = req.body.nameOnCard;
+    
 
 
     if(!cardNumber){
@@ -892,13 +896,237 @@ exports.addCustomerCard = (req, res) => {
                 number: cardNumber,
                 exp_month: expiryMonth,
                 exp_year: expiryYear,
-                cvc: cardCVV
+                cvc: cardCVV,
+                name: nameOnCard
             }
         })
         .then(tokenData => {
+            // create a card
+            stripe.customers.createSource(
+                user.stripeCustomerId,
+                {
+                    source: tokenData.id
+                }
+            )
+            .then(cardData => {
+                // save this stripe card
+                var card = new Card({
+                    cardId: cardData.id,
+                    brand: cardData.brand,
+                    country: cardData.country,
+                    expiryMonth: cardData.exp_month,
+                    expiryYear: cardData.exp_year,
+                    last4: cardData.last4,
+                    nameOnCard: cardData.name,
+                    customerId: cardData.customer,
+                    userId: user._id,
+                    user: user._id,
+                });
+
+                card.save(card)
+                .then(newCard => {
+                    // update user
+                    user.cards.push(newCard._id);
+                    User.updateOne({_id: user._id}, user)
+                    .then(data => console.log("user cards updated"))
+                    .catch(err => console.log("error updating user cards" + err));
+
+                    result.status = "success";
+                    result.card = newCard;
+                    result.message = "card added succesfully";
+                    return res.status(200).send(result);
+                })
+                .catch(err => {
+                    console.log(err);
+                    result.status = "failed";
+                    result.message = "error occurred saving card: " + err.message;
+                    return res.status(500).send(result);
+                });
             
+            })
+            .catch(err => {
+                console.log(err);
+                result.status = "failed";
+                result.message = "error occurred calling stripe: " + err.message;
+                return res.status(500).send(result);
+            });
+          
         })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred calling stripe: " + err.message;
+            return res.status(500).send(result);
+        });
     })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user";
+        return res.status(500).send(result);
+    });
+}
+
+exports.deleteCustomerCard = (req, res) => {
+    var result = {};
+
+    var userId = req.body.userId;
+    var cardId = req.body.cardId;
+
+    User.findOne({_id: userId})
+    .then(user => {
+        if(!user){
+            result.status = "failed";
+            result.message = "user not found";
+            return res.status(404).send(result); 
+        }
+
+        Card.findOne({_id: cardId})
+        .then(card => {
+            if(!card){
+                result.status = "failed";
+                result.message = "card not foud";
+                return res.status(404).send(result); 
+            }
+
+            // call stripe now
+            stripe.customers.deleteSource(
+                user.stripeCustomerId,
+                card.cardId
+            )
+            .then(deleted => {
+                if(deleted.deleted == true){
+                    // remove from db
+                    Card.deleteOne({_id: card._id})
+                    .then(data => {
+                        // remove from user list
+                        var newArray = user.cards.filter(function(ele){ 
+                            return ele != card._id; 
+                        });
+
+                        user.cards = newArray;
+                        User.updateOne({_id: user._id}, user)
+                        .then(data => console.log("user cards updated"))
+                        .catch(err => console.log("error updating user cards" + err));
+
+                        result.status = "success";
+                        result.message = "user card deleted";
+                        return res.status(200).send(result); 
+
+                    })
+                    .catch(err => {
+                        console.log(err);
+                        result.status = "failed";
+                        result.message = "error occurred deleting card";
+                        return res.status(500).send(result);
+                    });
+                }else{
+                    result.status = "failed";
+                    result.message = "card not deleted";
+                    return res.status(400).send(result);
+                }
+            })
+            .catch(err => {
+                console.log(err);
+                result.status = "failed";
+                result.message = "error occurred calling stripe: " + err.message;
+                return res.status(500).send(result);
+            });
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding card";
+            return res.status(500).send(result);
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user";
+        return res.status(500).send(result);
+    });
+
+}
+
+exports.addUpdateDevice = (req, res) => {
+    var result = {};
+
+    var token = req.body.token;
+    var deviceModel = req.body.deviceModel;
+    var os = req.body.os;
+    var userId = req.body.userId;
+
+    if(!token){
+        result.status = "failed";
+        result.message = "device token is required";
+        return res.status(400).send(result) 
+    }
+
+    User.findOne({_id: userId})
+    .then(user => {
+        if(!user){
+            result.status = "failed";
+            result.message = "user not found";
+            return res.status(404).send(result);
+        }
+
+        Device.findOne({userId: userId})
+        .then(device => {
+            if(!device){
+                var dd = new Device({
+                    token: token,
+                    deviceModel: deviceModel,
+                    os: os,
+                    userId: user._id,
+                    user: user._id,
+                });
+
+                dd.save(dd)
+                .then(data => {
+                    result.status = "success";
+                    result.message = "device data saved";
+                    return res.status(200).send(result);
+                })
+                .catch(err => {
+                    console.log(err);
+                    result.status = "failed";
+                    result.message = "error saving device data";
+                    return res.status(500).send(result);
+                });
+            }else{
+                // device was found, update
+                device.token = token;
+                device.deviceModel = deviceModel;
+                device.os = os;
+                Device.updateOne({_id: device._id}, device)
+                .then(data => {
+                    result.status = "success";
+                    result.message = "device data updated";
+                    return res.status(200).send(result);
+                })
+                .catch(err => {
+                    console.log(err);
+                    result.status = "failed";
+                    result.message = "error updating device data";
+                    return res.status(500).send(result);
+                });
+
+            }
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error finding device data";
+            return res.status(500).send(result);
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error finding user";
+        return res.status(500).send(result);
+    });
 }
 
 

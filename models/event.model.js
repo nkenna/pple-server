@@ -13,13 +13,16 @@ module.exports = mongoose => {
         recurring: { type: Boolean, default: false }, // if true, event start date will be resetted automattically
         timeToNextStartDate: { type: Number}, // if recurring, timeToNextStartDate specifies when it will be scheduled again
         timeToNextStartDateType: { type: String, default: "days" }, // if recurring, will it be reschuled in hours, days, weeks, months or years
-        paid: { type: Boolean, default: false, require: true }, // true or false. this cannot be changed and all tickets under it must be paid or not
+        paid: { type: Boolean, default: false, require: false }, // true or false. this cannot be changed and all tickets under it must be paid or not
         mediaPosition1: { type: String, default: "" },
         mediaPosition2: { type: String, default: "" },
         mediaPosition3: { type: String, default: "" },
         mediaPosition4: { type: String, default: "" },
         status: { type: Boolean, default: true }, //activate and deactivate status
         cancelled: { type: Boolean, default: false },
+        welcomeMsg: { type: String},
+        privateEvent: { type: Boolean, default: false },
+        guestLimit: { type: Number, default: 0},
         quickAdd: { type: Boolean, default: false },
         virtual: { type: Boolean, default: true },
         virtualPlatform: { type: String, default: "" },

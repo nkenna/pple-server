@@ -17,6 +17,7 @@ module.exports = mongoose => {
         accountId: { type: String},
         type: {type: String, default: "user"}, // user or admin
         events: [{ type: mongoose.Schema.Types.ObjectId, ref: 'event'}],
+        cards: [{ type: mongoose.Schema.Types.ObjectId, ref: 'card'}],
         bank: { type: mongoose.Schema.Types.ObjectId, ref: 'bank'},
         connectedaccount: { type: mongoose.Schema.Types.ObjectId, ref: 'connectedaccount'},
         wallet: { type: mongoose.Schema.Types.ObjectId, ref: 'wallet'},
