@@ -7,6 +7,7 @@ const Ticket = db.tickets;
 const ChildTicket = db.childtickets;
 const Guest = db.guests;
 const Join = db.joins;
+const EventRoom = db.eventrooms;
 
 const os = require('os');
 var fs = require('fs');
@@ -26,6 +27,7 @@ const stripe = require('stripe')(process.env.STRIPE_API_KEY);
 exports.createEvent = (req, res) => {
     var result = {};
 
+
     var title = req.body.title;
     var detail = req.body.detail;
     var startDate = req.body.startDate;
@@ -39,9 +41,28 @@ exports.createEvent = (req, res) => {
     var virtual = req.body.virtual;
     var virtualPlatform = req.body.virtualPlatform;
     var virtualLink = req.body.virtualLink;
-    var location = req.body.location;
+    var country = req.body.country;
+    var city= req.body.city;
+    var state = req.body.state;
+    var address = req.body.address;
+    var landmark = req.body.landmark;
+    var lat = req.body.lat;
+    var lon = req.body.lon;
     var welcomeMsg = req.body.welcomeMsg;
     var privateEvent = req.body.privateEvent;
+    var ticketLimit = req.body.ticketLimit;
+    var guestLimit = req.body.guestLimit;
+    var price = req.body.price;
+    var media = req.files.media;
+    let uploadPath;
+
+  
+
+    if (!req.files || Object.keys(req.files).length === 0) {
+        result.status = "failed";
+        result.message = "image fields cannot be empty";
+        return res.status(400).send(result);
+    }
 
     if(virtual == null){
         result.status = "failed";
@@ -55,7 +76,7 @@ exports.createEvent = (req, res) => {
         return res.status(400).send(result);
     }
 
-    if(!location){
+   /* if(!location){
         result.status = "failed";
         result.message = "event location is required";
         return res.status(400).send(result);
@@ -65,7 +86,7 @@ exports.createEvent = (req, res) => {
         result.status = "failed";
         result.message = "event city and address is required";
         return res.status(400).send(result);
-    }
+    }*/
 
 
     if(!title){
@@ -144,15 +165,16 @@ exports.createEvent = (req, res) => {
             }
         }
 
+
         // create location data
         var loc = new Location({
-            country: location.country,
-            state: location.state,
-            city: location.city,
-            address: location.address,
-            landmark: location.landmark,
-            lat: location.lat,
-            lon: location.lon,
+            country: country,
+            state: state,
+            city: city,
+            address: address,
+            landmark: landmark,
+            lat: lat,
+            lon: lon,
             //eventId: { type: String, default: "" },
             //event: [{ type: mongoose.Schema.Types.ObjectId, ref: 'event'}],
             //user: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
@@ -179,10 +201,32 @@ exports.createEvent = (req, res) => {
                 eventInviteLink: ref,
                 user: user._id,
                 location: newLoc._id,
+                welcomeMsg: welcomeMsg,
+                privateEvent: privateEvent,
+                guestLimit: guestLimit,
+                ticketLimit: ticketLimit,
+                price: price
             });
 
             event.save(event)
             .then(newEvent => {
+                // create event room
+                var eventRoom = new EventRoom({
+                    eventId: newEvent._id,
+                    event: newEvent._id,
+                });
+
+                eventRoom.save(eventRoom)
+                then(da => {
+                    console.log("event room created");
+                    newEvent.eventRoomId = da._id;
+                    newEvent.eventRoom = da._id;
+                    Event.updateOne({_id: newEvent._id}, newEvent)
+                    .then(data => console.log('event room updated'))
+                    .catch(err => console.log('event room update failed'));
+                })
+                .catch(err => console.log("error creating event room: " + err));
+
                 // change this user to be a host
                 user.isHost = true;
                
@@ -199,7 +243,7 @@ exports.createEvent = (req, res) => {
                 .catch(err => console.log("error occurred updating location"));
 
                 // event have been created. Send email to users within the event city
-                Location.find({city: location.city})
+                Location.find({city: city})
                 .populate('user', {password: 0})
                 .populate('event')
                 .then(locations => {
@@ -232,7 +276,55 @@ exports.createEvent = (req, res) => {
                                     "<p>A new event was just created on PPLE that might interest</p>";
                     tools.sendEmailToMany(validUserEmails, "New Event on PPLE close to you", content);
 
-                    }                  
+                    } 
+                    
+                    // upload media starts
+                    uploadPath = path.join(process.cwd(), '/media/images/events/' +  media.name); //__dirname + '/images/avatars/' + avatar.name;
+                    console.log(media.mimetype);
+                    console.log(process.cwd()); 
+
+                    media.mv(uploadPath, function(err) {
+                        if(err){
+                            console.log("error moving file: " + err);
+                            /*result.status = "failed";
+                            result.message = "error moving file: " + err;
+                            return res.status(500).send(result);*/
+                        }
+
+                        // create filename
+                        var newName = '';
+                        if(media.mimetype == 'image/jpeg'){
+                            newName = newEvent._id + '_' + '1' + '.jpg';
+                        }else if(media.mimetype == 'image/png'){
+                            newName = newEvent._id + '_' + '1' + '.png';
+                        }else if (media.mimetype == 'image/gif') {
+                            newName = newEvent._id + '_' + '1' + '.gif';
+                        }else {
+                            newName = newEvent._id + '_' + '1' + '.png';
+                        }
+
+                        // we need to rename here   
+                        var newPath = path.join(process.cwd(), '/media/images/events/' + newName); 
+                        fs.rename(uploadPath, newPath, function(err) {
+                            if (err) {
+                                console.log("error renaming file: " + err);
+                                /*result.status = "failed";
+                                result.message = "event media upload not successful: " + err;
+                                return res.status(500).send(result);*/
+                            }
+                            console.log("Successfully renamed the media!");
+
+                            //update event media position
+                            newEvent.mediaPosition1 = "media-events/" + newName;
+                            Event.updateOne({_id: newEvent._id}, newEvent)
+                            .then(data => console.log('event media updated'))
+                            .catch(err => console.log('event media update failed'));
+                        });
+                        
+                    });
+
+                    
+                    // upload media ends
 
                    
                     result.status = "success";
@@ -1473,6 +1565,7 @@ exports.upComingEvents = (req, res) => {
         $gte: currentDate,
         $lt: useDate
     }})
+    
     .then(initEvents => {
         Event.find({startDate: {
             $gte: currentDate,
@@ -1484,7 +1577,7 @@ exports.upComingEvents = (req, res) => {
         .populate("admin", {password: 0})
         .populate("location")
         .populate("tickets")
-        .sort('-createdAt')
+        .sort('createdAt')
         .then(events => {
             result.status = "success";
             result.events = events;

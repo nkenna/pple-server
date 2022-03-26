@@ -1,4 +1,5 @@
 module.exports = mongoose => {
+    
     var schema = mongoose.Schema(
       {
         title: { type: String, default: "", require: true},
@@ -10,14 +11,18 @@ module.exports = mongoose => {
         endDate: Date,//{ type: String, default: "" },
         maxTickets: { type: Number, default: 0 },
         soldTickets: { type: Number, default: 0 },
+        guestLimit: { type: Number, default: 0 },
+        ticketLimit: { type: Number, default: 1 }, // limit per order
+        likesCount: { type: Number, default: 0 },
+        price: { type: Number, default: 0 },
         recurring: { type: Boolean, default: false }, // if true, event start date will be resetted automattically
         timeToNextStartDate: { type: Number}, // if recurring, timeToNextStartDate specifies when it will be scheduled again
         timeToNextStartDateType: { type: String, default: "days" }, // if recurring, will it be reschuled in hours, days, weeks, months or years
         paid: { type: Boolean, default: false, require: false }, // true or false. this cannot be changed and all tickets under it must be paid or not
         mediaPosition1: { type: String, default: "" },
-        mediaPosition2: { type: String, default: "" },
-        mediaPosition3: { type: String, default: "" },
-        mediaPosition4: { type: String, default: "" },
+        mediaPosition2: { type: String},
+        mediaPosition3: { type: String},
+        mediaPosition4: { type: String},
         status: { type: Boolean, default: true }, //activate and deactivate status
         cancelled: { type: Boolean, default: false },
         welcomeMsg: { type: String},
@@ -33,6 +38,8 @@ module.exports = mongoose => {
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
         admin: { type: mongoose.Schema.Types.ObjectId, ref: 'admin'},
         location: { type: mongoose.Schema.Types.ObjectId, ref: 'location'},
+        eventRoomId: { type: String},
+        eventroom: { type: mongoose.Schema.Types.ObjectId, ref: 'eventroom'},
       },
       {timestamps: true}
     );   

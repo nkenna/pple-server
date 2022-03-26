@@ -9,6 +9,7 @@ module.exports = mongoose => {
         last4: { type: String},
         nameOnCard: {type: String},
         customerId: { type: String},
+        isDefault: { type: Boolean, default: false},
         userId: { type: String},
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
       },

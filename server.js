@@ -52,6 +52,8 @@ db.mongoose
   require("./routes/admin.routes")(app);
   require("./routes/host.routes")(app);
   require("./routes/invite.routes")(app);
+  require("./routes/order.routes")(app);
+  require("./routes/chat.routes")(app);
 
   
   //require("./app/routes/admin.routes")(app);

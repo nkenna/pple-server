@@ -24,6 +24,10 @@ db.cards = require('./card.model')(mongoose);
 db.invites = require('./invite.model')(mongoose);
 db.devices = require('./device.model')(mongoose);
 db.notifications = require('./notification.model')(mongoose);
+db.orders = require('./order.model')(mongoose);
+db.follows = require('./follow.model')(mongoose);
+db.eventrooms = require('./eventroom.model')(mongoose);
+db.chats = require('./chat.model')(mongoose);
 
 db.admins = require('./admin.model')(mongoose);
 

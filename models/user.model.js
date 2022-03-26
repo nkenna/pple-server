@@ -8,10 +8,14 @@ module.exports = mongoose => {
         email: { type: String},
         password: { type: String},
         avatar: { type: String},
+        bio: { type: String, default: 'Welcome to my official PPLE'},
         status: { type: Boolean, default: true }, //activate and deactivate user
         emailNotif: { type: Boolean, default: true }, // true: user recieves email notification
         verified: { type: Boolean, default: false },
         enable2FA: { type: Boolean, default: false },
+        followersCount: { type: Number, default: 0},
+        followedCount: { type: Number, default: 0},
+        hostedEventCount: { type: Number, default: 0},
         isHost: { type: Boolean, default: false },
         stripeCustomerId: { type: String},
         accountId: { type: String},

@@ -5,6 +5,13 @@ const Card = db.cards;
 const VerifyCode = db.verifycodes;
 const ResetCode = db.resetcodes;
 const Device = db.devices;
+//const Stripe = require('stripe');
+//const stripe = Stripe(process.env.STRIPE_API_KEY);
+
+const stripe = require('stripe')('sk_test_4eC39HqLyjWDarjtT1zdp7dc');
+
+
+
 
 const os = require('os');
 var fs = require('fs');
@@ -37,11 +44,11 @@ exports.createUser = (req, res) => {
         return res.status(400).send(result);
     }
 
-    if(!username){
+    /*if(!username){
         result.status = "failed";
         result.message = "username is required";
         return res.status(400).send(result);
-    }
+    }*/
 
     if(!password){
         result.status = "failed";
@@ -55,131 +62,116 @@ exports.createUser = (req, res) => {
         return res.status(400).send(result);
     }
 
-    User.findOne({username: {$regex: username, $options: 'i'}})
-    .then(userWithUsername => {
-        if(userWithUsername){
+    User.findOne({ email: {$regex : email, $options: 'i'}})
+    .then(userd => {
+        if(userd){
             result.status = "failed";
-            result.message = "username already taken. Try another one";
+            result.message = "email already exist. Try another email or login with this account";
             return res.status(409).send(result); 
         }
 
-        User.findOne({ email: {$regex : email, $options: 'i'}})
-        .then(userd => {
-            if(userd){
+        bcrypt.hash(password, saltRounds, (err, hash) => {
+            // Now we can store the password hash in db.
+            if(err){
                 result.status = "failed";
-                result.message = "email already exist. Try another email or login with this account";
-                return res.status(409).send(result); 
+                result.message = "unknown error occurred with password";
+                return res.status(500).send(result);
             }
-
-            bcrypt.hash(password, saltRounds, (err, hash) => {
-                // Now we can store the password hash in db.
-                if(err){
-                    result.status = "failed";
-                    result.message = "unknown error occurred with password";
-                    return res.status(500).send(result);
-                }
-        
-                var newUser = new User({
-                    firstname: firstname,
-                    lastname: lastname,
-                    phone: phone,
-                    email: email,
-                    password: hash,
-                    username: username
-                });
-
-                    
-                newUser.save(newUser)
-                .then(user => {
-                    // create user wallet
-                    var wallet = new Wallet({
-                        walletRef: cryptoRandomString({length: 6, type: 'alphanumeric'}) + cryptoRandomString({length: 6, type: 'alphanumeric'}),
-                        userId: user._id,
-                        user: user._id
-                    });
-
-                    wallet.save(wallet)
-                    .then(wa => {
-                        console.log("user wallet created");
-                        user.wallet = wa._id;
-                        User.updateOne({_id: user._id}, user)
-                        .then(wa => console.log("user updated"))
-                        .catch(err => console.log("error updating user"));
-
-                    })
-                    .catch(err => console.log("error creating wallet"));
-                    
-                    // creating stripe customer
-                    stripe.customers.create({
-                        description: "PPLE Event host",
-                        name: user.firstname + " " + user.lastname,
-                        email: user.email,
-                    })
-                    .then(customerData => {
-                        console.log(customerData);
-            
-                        if(customerData.id){
-                            //var stripeData = customerData.stripeCustomer;
-            
-                            //update customer ID of user
-                            user.stripeCustomerId = customerData.id;
-            
-                            User.updateOne({_id: user._id}, user)
-                            .then(da => console.log("user have been updated"))
-                            .catch(err => console.log("error occurred updating user"));
-                        }else{
-                            result.status = "failed";
-                            result.message = "stripe operation failed";
-                            return res.status(400).send(result);
-                        }
-                        
-                    })
-                    .catch(err => console.log("error creating strip customer: " + err));
+    
+            var newUser = new User({
+                firstname: firstname,
+                lastname: lastname,
+                phone: phone,
+                email: email,
+                password: hash,
+                //username: username
+            });
 
                 
-                        
-                    // send verification email
-                    var vcode = new VerifyCode({
-                        code: cryptoRandomString({length: 6, type: 'alphanumeric'}),
-                        email: user.email,
-                        userId: user._id
-                    });
-        
-                    vcode.save(vcode)
-                    .then(vc => {
-                        console.log("done creating verification code");
-                    
-                        var emailtext = "<p>To verify your account. Click on this link or copy to your browser: " +
-                        "https://pple.com/verify-account/" + vc.code + " or paste this code on the provided field: "+ vc.code + " </p>";
-
-                        tools.sendEmail(
-                            user.email,
-                            "New PPLE Account Verification",
-                            emailtext
-                        );
-                    })
-                    .catch(err => console.log("error sending email: " + err));
-        
-                    
-                    result.status = "success";
-                    result.message = "user account created successfully";
-                    return res.status(200).send(result);
+            newUser.save(newUser)
+            .then(user => {
+                // create user wallet
+                var wallet = new Wallet({
+                    walletRef: cryptoRandomString({length: 6, type: 'alphanumeric'}) + cryptoRandomString({length: 6, type: 'alphanumeric'}),
+                    userId: user._id,
+                    user: user._id
                 });
+
+                wallet.save(wallet)
+                .then(wa => {
+                    console.log("user wallet created");
+                    user.wallet = wa._id;
+                    User.updateOne({_id: user._id}, user)
+                    .then(wa => console.log("user updated"))
+                    .catch(err => console.log("error updating user"));
+
+                })
+                .catch(err => console.log("error creating wallet"));
+                
+                // creating stripe customer
+                stripe.customers.create({
+                    description: "PPLE Event host",
+                    name: user.firstname + " " + user.lastname,
+                    email: user.email,
+                })
+                .then(customerData => {
+                    console.log(customerData);
+        
+                    if(customerData.id){
+                        //var stripeData = customerData.stripeCustomer;
+        
+                        //update customer ID of user
+                        user.stripeCustomerId = customerData.id;
+        
+                        User.updateOne({_id: user._id}, user)
+                        .then(da => console.log("user have been updated"))
+                        .catch(err => console.log("error occurred updating user"));
+                    }else{
+                        result.status = "failed";
+                        result.message = "stripe operation failed";
+                        return res.status(400).send(result);
+                    }
+                    
+                })
+                .catch(err => console.log("error creating strip customer: " + err));
+
+            
+                    
+                // send verification email
+                var vcode = new VerifyCode({
+                    code: cryptoRandomString({length: 6, type: 'alphanumeric'}),
+                    email: user.email,
+                    userId: user._id
+                });
+    
+                vcode.save(vcode)
+                .then(vc => {
+                    console.log("done creating verification code");
+                
+                    var emailtext = "<p>To verify your account. Click on this link or copy to your browser: " +
+                    "https://pple.com/verify-account/" + vc.code + " or paste this code on the provided field: "+ vc.code + " </p>";
+
+                    tools.sendEmail(
+                        user.email,
+                        "New PPLE Account Verification",
+                        emailtext
+                    );
+                })
+                .catch(err => console.log("error sending email: " + err));
+    
+                
+                result.status = "success";
+                result.message = "user account created successfully";
+                return res.status(200).send(result);
             });
-        })
-        .catch(err => {
-            console.log(err);
-            result.status = "failed";
-            result.message = "error occurred finding this email";
-            return res.status(500).send(result);
-        });  
+        });
     })
     .catch(err => {
         console.log(err);
         result.status = "failed";
-        result.message = "error occurred finding this username";
+        result.message = "error occurred finding this email";
         return res.status(500).send(result);
-    });  
+    }); 
 
       
 }
@@ -210,6 +202,8 @@ exports.addUsernameToUser = (req, res) => {
 
     var userId = req.body.userId;
     var username = req.body.username;
+
+    console.log(username);
 
     if(!username){
         result.status = "failed";
@@ -395,6 +389,9 @@ exports.loginUser = (req, res) => {
     var email = req.body.email;
     var password = req.body.password;
 
+    console.log(email);
+    console.log(password);
+
     User.findOne({email: email})
     .then(user => {
         if(!user){
@@ -440,6 +437,7 @@ exports.loginUser = (req, res) => {
                 name: user.name,
                 id: user._id,
                 avatar: user.avatar,
+                username: user.username
             }
 
             result.user = userData;
@@ -692,7 +690,7 @@ exports.userProfileById = (req, res) => {
 
     User.findOne({_id: userId})
     .select("-password")
-    .populate("events")
+    .populate("cards")
     .then(user => {
         if(!user){
             result.status = "failed";
@@ -822,7 +820,7 @@ exports.editAvatar = (req, res) => {
 
                 // update user avatar field
                 user.avatar = "/media-avatar/" + newName;
-                User.updateOne({username: user.username}, user)
+                User.updateOne({_id: user._id}, user)
                 .then(data => {
                     result.status = "success";
                     result.message = "avatar uploaded successful";
@@ -848,6 +846,7 @@ exports.editAvatar = (req, res) => {
 }
 
 exports.addCustomerCard = (req, res) => {
+    console.log(process.env.STRIPE_API_KEY);
     var result = {};
 
     var userId = req.body.userId;
@@ -967,6 +966,64 @@ exports.addCustomerCard = (req, res) => {
     });
 }
 
+exports.updateStripeCustomerCard = (req, res) => {
+    var result = {};
+
+    var userId = req.body.userId;
+    var cardId = req.body.cardId;
+
+    User.findOne({_id: userId})
+    .then(user => {
+        if(!user){
+            result.status = "failed";
+            result.message = "user not found";
+            return res.status(404).send(result); 
+        }
+
+        Card.findOne({_id: cardId})
+        .then(card => {
+            if(!card){
+                result.status = "failed";
+                result.message = "card not found";
+                return res.status(404).send(result); 
+            }
+
+            // update now
+            stripe.customers.update(
+                user.stripeCustomerId,
+                {
+                    default_source: card.cardId
+                }
+            )
+            .then(updateData => {
+                
+                result.status = "success";
+                result.message = "default card changed";
+                return res.status(200).send(result); 
+            })
+            .catch(err => {
+                console.log(err);
+                result.status = "failed";
+                result.message = "error occurred calling stripe: " + err.message;
+                return res.status(500).send(result);
+            });
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding card";
+            return res.status(500).send(result);
+        });
+
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user";
+        return res.status(500).send(result);
+    });
+}
+
 exports.deleteCustomerCard = (req, res) => {
     var result = {};
 
@@ -1003,6 +1060,7 @@ exports.deleteCustomerCard = (req, res) => {
                         var newArray = user.cards.filter(function(ele){ 
                             return ele != card._id; 
                         });
+                        console.log(newArray);
 
                         user.cards = newArray;
                         User.updateOne({_id: user._id}, user)
@@ -1047,6 +1105,26 @@ exports.deleteCustomerCard = (req, res) => {
         return res.status(500).send(result);
     });
 
+}
+
+exports.allUserCards = (req, res) => {
+    var result = {};
+
+    var userId = req.body.userId;
+
+    Card.find({userId: userId})
+    .then(cards => {
+        result.status = "success";
+        result.message = "user cards found";
+        result.cards = cards;
+        return res.status(200).send(result); 
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user cards";
+        return res.status(500).send(result);
+    });
 }
 
 exports.addUpdateDevice = (req, res) => {
@@ -1128,5 +1206,29 @@ exports.addUpdateDevice = (req, res) => {
         return res.status(500).send(result);
     });
 }
+
+exports.allHostUsers = (req, res) => {
+    var result = {};
+
+    User.find({isHost: true, status: true})
+    .select("username")
+    .select("avatar")
+    .select("email")
+    .select("lastname")
+    .select("firstname")
+    .then(hosts => {
+        result.status = "success";
+        result.hosts = hosts;
+        result.message = "hosts found";
+        return res.status(200).send(result) 
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error finding hosts";
+        return res.status(500).send(result);
+    });
+}
+
 
 

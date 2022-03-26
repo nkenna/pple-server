@@ -1,15 +1,18 @@
 module.exports = mongoose => {
     var schema = mongoose.Schema(
       {
-        firstname: { type: String, default: "" },
-        lastname: { type: String, default: "" },
-        phone: { type: String, default: "" },
-        email: { type: String, default: "" },
+        firstname: { type: String},
+        lastname: { type: String},
+        phone: { type: String},
+        email: { type: String},
         status: { type: Boolean, default: true }, //activate and deactivate user
         verified: { type: Boolean, default: true },
         type: {type: String, default: "guest"},
-        userId: { type: String, default: "" },
-        eventId: { type: String, default: "" },
+        orderId: { type: String},
+        order: { type: mongoose.Schema.Types.ObjectId, ref: 'order'},
+        userId: { type: String},
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
+        eventId: { type: String},
         event: { type: mongoose.Schema.Types.ObjectId, ref: 'event'},
       },
       {timestamps: true}
@@ -22,7 +25,7 @@ module.exports = mongoose => {
       return object;
     });
 
-    schema.index({ firstname: 'text', lastname: 'text', email: 'text'});
+    schema.index({ firstname: 'text', lastname: 'text', email: 'text', phone: 'text', orderId: 'text'});
   
     const Guest = mongoose.model("guest", schema);
     return Guest;

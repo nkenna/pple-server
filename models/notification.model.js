@@ -14,6 +14,9 @@ module.exports = mongoose => {
         followedId: {type: String},
         followered: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
 
+        followId: { type: String},
+        follow: { type: mongoose.Schema.Types.ObjectId, ref: 'follow'},
+
         eventId: { type: String},
         event: { type: mongoose.Schema.Types.ObjectId, ref: 'event'},
 
