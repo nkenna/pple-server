@@ -25,6 +25,7 @@ const ExcelJS = require('exceljs');
 var AdminFB = require("firebase-admin");
 var axios = require('axios');
 const { resourceLimits } = require("worker_threads");
+const { invites } = require("../models");
 const stripe = require('stripe')(process.env.STRIPE_API_KEY);
 
 exports.createEvent = (req, res) => {
@@ -55,7 +56,6 @@ exports.createEvent = (req, res) => {
     var privateEvent = req.body.privateEvent;
     var ticketLimit = req.body.ticketLimit;
     var guestLimit = req.body.guestLimit;
-    var minGuestLimit = req.body.minGuestLimit;
     var price = req.body.price;
     var media = req.files.media;
     let uploadPath;
@@ -208,7 +208,6 @@ exports.createEvent = (req, res) => {
                 welcomeMsg: welcomeMsg,
                 privateEvent: privateEvent,
                 guestLimit: guestLimit,
-                minGuestLimit: minGuestLimit,
                 ticketLimit: ticketLimit,
                 price: price
             });
@@ -1059,7 +1058,6 @@ exports.eventsHostedByUser = (req, res) => {
         .populate("user", {password: 0, emailNotif: 0, cards: 0, events: 0})
         .populate("admin", {password: 0})
         .populate("location")
-        .populate("eventRoom")
         .populate("hostBy", {password: 0, emailNotif: 0, cards: 0, events: 0})
         .sort('-createdAt')
         .then(events => {
@@ -1070,15 +1068,9 @@ exports.eventsHostedByUser = (req, res) => {
                 result.total = count;
                 result.currentPage = page;
                 result.perPage = perPage;
-                result.message = "events found: " + finalEvents.length;
+                result.message = "events found: " + events.length;
                 return res.status(200).send(result);
             })
-            .catch(err => {
-                console.log(err);
-                result.status = "failed";
-                result.message = "error occurred finding events";
-                return res.status(500).send(result);
-            });
             
         })
         .catch(err => {
@@ -1657,10 +1649,10 @@ exports.upComingEvents = (req, res) => {
         .populate("hostBy", {firstname: 1, lastname: 1, email: 1, avatar: 1, username: 1})
         .populate("admin", {password: 0})
         .populate("location")
+        .populate("tickets")
         .populate("eventRoom")
         .sort('createdAt')
         .then(events => {
-            
             populateLikes(events, userId)
             .then(finalEvents => {
                 result.status = "success";
@@ -1669,12 +1661,6 @@ exports.upComingEvents = (req, res) => {
                 result.message = "events found: " + events.length;
                 return res.status(200).send(result);
             })
-            .catch(err => {
-                console.log(err);
-                result.status = "failed";
-                result.message = "error occurred finding events";
-                return res.status(500).send(result);
-            });
             
         })
         .catch(err => {
@@ -1714,6 +1700,35 @@ async function populateLikes(events, userId) {
         }else{
             var ev = {};
             ev.event = events[i];
+            //events[i].likeData = like;
+            finalEvents.push(ev);
+        }
+    }
+
+    return finalEvents;
+ }
+
+
+ async function populateEventInviteLikes(invites, userId) {
+    var finalEvents = [];
+    for (let i = 0; i < invites.length; i++) {
+        console.log(events[i]._id);
+        let like = await Like.findOne({eventId: invites[i].eventId, userId: userId}).exec();
+        
+        if(like != null){
+            console.log(like);
+            var ev = {};
+            //ev = events[i]
+            ev.likeData = like;
+            ev.event = invites[i].event;
+            console.log("like data::");
+            
+            //console.log(ev.likeData);
+            console.log(ev);
+            finalEvents.push(ev);
+        }else{
+            var ev = {};
+            ev.event = invites[i].event;
             //events[i].likeData = like;
             finalEvents.push(ev);
         }
@@ -1852,61 +1867,45 @@ exports.userJoinedEvents = (req, res) => {
     var result = {};
 
     var userId = req.query.userId;
+    var eventId = req.query.eventId;
+    var perPage = 20; 
+    var page = req.query.page; 
 
-    Invite.find({inviteeId: userId, accepted: true})
-    .populate({ 
-        path: 'event',
-        populate: {
-          path: 'location',
-          model: 'location',
-        },
-        
-     })
-    .then(joins => {
-        populateLikesForInvites(joins, userId)
-        .then(finalJoins => {
-            result.status = "success";
-            result.joinedEvents = finalJoins;
-            result.message = "joined events found: " + finalJoins.length;
-            return res.status(200).send(result);
+    Invite.countDocuments({inviteeId: userId, eventId: eventId, accepted: true})
+    .then(count => {
+        Invite.find({inviteeId: userId, eventId: eventId, accepted: true})
+        .populate("event")
+        .then(invites => {
+            populateEventInviteLikes(invites, userId)
+            .then(finalEvents => {
+                result.status = "success";
+                result.joinedEvents = finalEvents;
+                result.total = count;
+                result.perPage = perPage;
+                result.page = page;
+                result.message = "joined events found: " + finalEvents.length;
+                return res.status(200).send(result);
+            })
         })
-        
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding user joined events";
+            return res.status(500).send(result);
+        });
     })
     .catch(err => {
         console.log(err);
         result.status = "failed";
-        result.message = "error occurred finding user joined events";
+        result.message = "error occurred counting invites";
         return res.status(500).send(result);
     });
+
+    
+    
+
+   
 }
-
-async function populateLikesForInvites(joins, userId) {
-    var finalEvents = [];
-    for (let i = 0; i < joins.length; i++) {
-        console.log(joins[i]._id);
-        let like = await Like.findOne({eventId: joins[i].event._id, userId: userId}).exec();
-        
-        if(like != null){
-            console.log(like);
-            var ev = {};
-            //ev = events[i]
-            ev.likeData = like;
-            ev.event = joins[i].event;
-            console.log("like data::");
-            
-            //console.log(ev.likeData);
-            console.log(ev);
-            finalEvents.push(ev);
-        }else{
-            var ev = {};
-            ev.event = joins[i].event;
-            //events[i].likeData = like;
-            finalEvents.push(ev);
-        }
-    }
-
-    return finalEvents;
- }
 
 exports.eventGuests = (req, res) => {
     var result = {};

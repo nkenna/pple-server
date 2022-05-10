@@ -8,12 +8,16 @@ const Device = db.devices
 const Order = db.orders
 const Event = db.events;
 const Guest = db.guests;
+const EventRoom = db.eventrooms;
+const Chat = db.chats;
+const Invite = db.invites;
 const cryptoRandomString = require('crypto-random-string')
 const moment = require('moment')
 var tools = require('../config/utils');
 const bcrypt = require('bcrypt');
 const saltRounds = 10;
-const stripe = require('stripe')('sk_test_4eC39HqLyjWDarjtT1zdp7dc');
+//require('dotenv').config();
+const stripe = require('stripe')(process.env.STRIPE_TEST_API_KEY);
 
 exports.createOrder = (req, res) => {
     var result = {};
@@ -21,6 +25,7 @@ exports.createOrder = (req, res) => {
     var quantity = req.body.quantity;
     var eventId = req.body.eventId;
     var userId = req.body.userId;
+
     
 
     User.findOne({_id: userId})
@@ -39,16 +44,29 @@ exports.createOrder = (req, res) => {
                 return res.status(404).send(result); 
             }
 
+            if(event.guestLimit > 0){
+                if(quantity != event.guestLimit){
+                    result.status = "failed";
+                    result.message = "quantiy and guest limit not equal";
+                    return res.status(409).send(result); 
+                }
+            }
+
+            
+
             // calculate charges
             var amt = event.price * quantity;
 
-            var charges = tools.calculateHostTipCommission(amt, 5.8) + 0.30;
+            var numCharges = tools.roundUpNumber(tools.calculateHostTipCommission(amt, 5.8) + 0.30);
+            var charges = numCharges;
 
             // calculate vat subcharge
-            var vatSubTotal = tools.calculateHostTipCommission(amt, 10); // lets keep VAT at 10%
+            var numVatSubTotal = tools.roundUpNumber(tools.calculateHostTipCommission(amt, 10)); // lets keep VAT at 10%
+            var vatSubTotal = numVatSubTotal;
 
             var total = vatSubTotal + charges + amt;
-            var subtotal = total - (vatSubTotal + charges);
+            var num = tools.roundUpNumber(total - (vatSubTotal + charges));
+            var subtotal = num;
 
             // create order
             var order = new Order({
@@ -67,12 +85,29 @@ exports.createOrder = (req, res) => {
                 subTotal: subtotal,
                 userId: user._id,
                 user: user._id,
-                event: event._id,
+                event: event._id
                 //paymentCard: { type: mongoose.Schema.Types.ObjectId, ref: 'card' }
             });
 
             order.save(order)
             .then(newOrder => {
+                //send push notification for created order
+                Device.findOne({userId: user._id})
+                    .then(device => {
+                        if(device){
+                            var data = {
+                                "orderId": followed._id.toString(),
+                                "userId": newGuest.id.toString(),
+                            };
+                            tools.pushMessageToDeviceWithData(
+                                device.token,
+                                "New Order created",
+                                "You have created a new order. Tap to complete order",
+                                data
+                            );
+                        }
+                })
+                .catch(err => console.log("error finding user device"));
                 result.status = "success";
                 result.message = "order created succesfully";
                 result.order = newOrder;
@@ -101,6 +136,7 @@ exports.createOrder = (req, res) => {
 
 }
 
+
 exports.applyTip = (req, res) => {
     var result = {};
 
@@ -114,17 +150,20 @@ exports.applyTip = (req, res) => {
             result.message = "order does not exist";
             return res.status(404).send(result); 
         }
-
+        var oldHostTip = order.hostTip;
         order.hostTip = tipAmount;
+        console.log(tipAmount);
         if(tipAmount == 0){
-            order.total = order.total - order.hostTip;
+            order.total = order.total - oldHostTip;
+            console.log(order.total);
             order.appliedTip = false;
         }else if(tipAmount > 0){
             order.total = order.total + tipAmount;
             order.appliedTip = true;
+            console.log(order.total);
         }
-        
-        order.subtotal = order.total - (order.vatSubTotal + order.charges);
+        var num = tools.roundUpNumber(order.total - (order.vatSubTotal + order.charges));
+        order.subtotal = num;
 
         Order.updateOne({_id: order._id}, order)
         .then(update => {
@@ -154,13 +193,6 @@ exports.payForOrder = (req, res) => {
     var orderId = req.body.orderId;
     var eventId = req.body.eventId;
     var userId = req.body.userId;
-    var guests = req.body.guests;
-
-    if(guests.length != quantity){
-        result.status = "failed";
-        result.message = "number of guests is greater than quantity of orders made, guest list must match oeder quantity";
-        return res.status(409).send(result); 
-    }
 
     User.findOne({_id: userId})
     .then(user => {
@@ -186,12 +218,18 @@ exports.payForOrder = (req, res) => {
                     return res.status(404).send(result); 
                 }
 
+                /*if(guests.length > order.quantity){
+                    result.status = "failed";
+                    result.message = "number of guests is greater than quantity of orders made, guest list must be less than or match oder quantity";
+                    return res.status(409).send(result); 
+                }*/
+
                 // gretrieve customer from stripe
                 stripe.customers.retrieve(
                     user.stripeCustomerId
                 )
                 .then(customerData => {
-                    console.log(customerData.default_source);
+                   // console.log(customerData.default_source);
                     // create charge object with customer default card
                     stripe.charges.create({
                         amount: order.total * 100,
@@ -201,6 +239,14 @@ exports.payForOrder = (req, res) => {
                         customer: customerData.id
                     })
                     .then(chargeData => {
+
+                        // update event room last chat
+                        event.hostById = user._id;
+                        event.hostBy = user._id;
+                        event.hosted = true;
+                        Event.updateOne({_id: event._id}, event)
+                        .then(data => console.log("event updated"))
+                        .catch(err => console.log("error event"));
 
                         // retrieve user payment card
                         Card.findOne({cardId: chargeData.payment_method})
@@ -217,168 +263,134 @@ exports.payForOrder = (req, res) => {
 
                             Order.updateOne({_id: order._id}, order)
                             .then(data => {
-                                // save guest from guests list
-                                for (let i = 0; i < guests.length; i++) {
-                                    var guest = guests[i];
-                                    // check if guest is a registered user
-                                    // if not a registered user create account
+                               
+                                
+                                EventRoom.findOne({_id: event.eventRoomId})
+                                .then(room => {
+                                    if(room){
+                                        // add this user to room
+                                        room.users.push(user._id);
+                                        EventRoom.updateOne({_id: room._id}, room)
+                                        .then(r => console.log("event chat room updated"))
+                                        .catch(err => console.log("error adding updating event chat room"));
 
-                                    User.findOne({ email: {$regex : guest.email, $options: 'i'}})
-                                    .then(user => {
-                                        if(user){ // guest found as registered user
-                                            var g = new Guest({
-                                                firstname: guest.firstname,
-                                                lastname: guest.lastname,
-                                                phone: guest.phone,
-                                                email: guest.email,
-                                                type: 'guest',
-                                                orderId: order._id,
-                                                order: order._id,
-                                                userId: user._id,
-                                                user: user._id,
-                                                eventId: event._id,
-                                                event: event._id
-                                            });
+                                        // send joined chat message
+                                        var chat = new Chat({
+                                            eventId: room.eventId,
+                                            senderId: user._id,
+                                            message: "@" + user.username + " just joined",
+                                            isJoinChat: true,
+                                            eventRoomId: room._id,
+                                            eventroom: room._id,
+                                            user: user._id,
+                                            event: room.eventId,
+                                        });
 
-                                            g.save(g)
-                                            .then(newGuest => {
-                                                order.guests.push(newGuest._id);
-                                                Device.findOne({userId: user._id})
-                                                .then(device => {
-                                                    if(device){
-                                                        var data = {
-                                                            "userId": followed._id.toString(),
-                                                            "guestId": newGuest.id.toString(),
-                                                            "eventId": event._id.toString()
-                                                        };
-                                                        tools.pushMessageToDeviceWithData(
-                                                            device.token,
-                                                            "New Event Guest",
-                                                            "You have been added as a guest to an event on PPLE platform",
-                                                            data
-                                                        );
-                                                    }
-                                                })
-                                                .catch(err => console.log("error finding follower device"));
-                                            })
-                                            .catch(err => console.log("error saving new guest"));
-                                        }
-                                        else { // guest is not a registered user
-                                            // create new user account
-                                            bcrypt.hash(cryptoRandomString({length: 20, type: 'alphanumeric'}), saltRounds, (err, hash) => {
-                                                // Now we can store the password hash in db.
-                                                
-                                                if(err){
-                                                    console.log("unknown error occurred with password");
-                                                }
-                                        
-                                                var newUser = new User({
-                                                    firstname: guest.firstname,
-                                                    lastname: guest.lastname,
-                                                    phone: guest.phone,
-                                                    email: guest.email,
-                                                    password: hash
-                                                    //username: username
-                                                });
-                                    
-                                                    
-                                                newUser.save(newUser)
-                                                .then(nuser => {
-                                                    // create a guest
-                                                    var g = new Guest({
-                                                        firstname: guest.firstname,
-                                                        lastname: guest.lastname,
-                                                        phone: guest.phone,
-                                                        email: guest.email,
-                                                        type: 'guest',
-                                                        orderId: order._id,
-                                                        order: order._id,
-                                                        userId: nuser._id,
-                                                        user: nuser._id,
-                                                        eventId: event._id,
-                                                        event: event._id
-                                                    });
+                                        chat.save(chat)
+                                        .then(ch => {
+                                            console.log("chat message sent");
 
-                                                    g.save(g)
-                                                    .then(nG => {
-                                                        order.guests.push(nG._id);
-                                                        console.log("guest saved successfully");
-                                                    })
-                                                    .catch(err => console.log("error saving new guest"));
-                                                    // create user wallet
-                                                    var wallet = new Wallet({
-                                                        walletRef: cryptoRandomString({length: 6, type: 'alphanumeric'}) + cryptoRandomString({length: 6, type: 'alphanumeric'}),
-                                                        userId: nuser._id,
-                                                        user: nuser._id
-                                                    });
-                                    
-                                                    wallet.save(wallet)
-                                                    .then(wa => {
-                                                        console.log("user wallet created");
-                                                        nuser.wallet = wa._id;
-                                                        User.updateOne({_id: nuser._id}, nuser)
-                                                        .then(wa => console.log("user updated"))
-                                                        .catch(err => console.log("error updating user"));
-                                    
-                                                    })
-                                                    .catch(err => console.log("error creating wallet"));
-                                                    
-                                                    // creating stripe customer
-                                                    stripe.customers.create({
-                                                        description: "PPLE Event host",
-                                                        name: nuser.firstname + " " + nuser.lastname,
-                                                        email: nuser.email,
-                                                    })
-                                                    .then(customerData => {
-                                                        console.log(customerData);
-                                            
-                                                        if(customerData.id){
-                                                            //var stripeData = customerData.stripeCustomer;
-                                            
-                                                            //update customer ID of user
-                                                            nuser.stripeCustomerId = customerData.id;
-                                            
-                                                            User.updateOne({_id: nuser._id}, nuser)
-                                                            .then(da => console.log("user have been updated"))
-                                                            .catch(err => console.log("error occurred updating user"));
-                                                        }else{
-                                                            console.log("stripe operation failed");
+                                            // update event room last chat
+                                            room.lastChat = ch._id;
+                                            EventRoom.updateOne({_id: room._id}, room)
+                                            .then(data => console.log("event room updated"))
+                                            .catch(err => console.log("error updating event room"));
+
+                                            // send push notification to chat room event
+                                            Device.findOne({userId: user._id})
+                                            .then(device => {
+                                                if(device){
+                                                    var data = {
+                                                        "userId": user._id.toString(),
+                                                        "chatRoomId": room._id.toString(),
+                                                        "eventId": event._id.toString()
+                                                    };
+                            
+                                                    tools.pushMessageToDeviceWithData(
+                                                        device.token,
+                                                        "Joined Chat",
+                                                        "someone just joined your experience chat room",
+                                                        data
+                                                    );
+
+                                                    Device.findOne({userId: invite.inviteeId})
+                                                    .then(device => {
+                                                        if(device){
+                                                            tools.subscribeToChatRoom(event.eventRoomId, device.token)
                                                         }
-                                                        
                                                     })
-                                                    .catch(err => console.log("error creating strip customer: " + err));
+                                                    .catch(err => console.log("error finding invitee device"));
+                                                }
+                                            })
+                                            .catch(err => console.log("error finding user device"));
+                                        })
+                                        .catch(err => console.log("error sending chat message"));
+                                    }
+                                })
+                                .catch(err => console.log("error adding user to event chat room"));
+
+                                // change this user to be a host
+                                user.isHost = true;
+                                user.hostedEventCount = user.hostedEventCount + 1;
+                            
+                                // update user
+                                User.updateOne({_id: user._id}, user)
+                                .then(da => console.log("user have been upgraded to host"))
+                                .catch(err => console.log("error occurred upgrading user to host"));
+
+                                // create invite data for this
+                                var invite = new Invite({
+                                    inviteMsg: user.username + " joined this experience",
+                                    inviterId: user._id,
+                                    inviteeId: user._id,
+                                    eventId: event._id,
+                                    event: event._id,
+                                    inviter: user._id,
+                                    invitee: user._id,
+                                    accepted: true
                                     
-                                                
-                                                        
-                                                    // send verification email
-                                                    var vcode = new VerifyCode({
-                                                        code: cryptoRandomString({length: 6, type: 'alphanumeric'}),
-                                                        email: nuser.email,
-                                                        userId: nuser._id
-                                                    });
-                                        
-                                                    vcode.save(vcode)
-                                                    .then(vc => {
-                                                        console.log("done creating verification code");
-                                                    
-                                                        var emailtext = "<p>A new PPLE account was created for you because you were added as a guest for one of its events. To verify your account. Click on this link or copy to your browser: " +
-                                                        "https://pple.com/verify-account/" + vc.code + " or paste this code on the provided field: "+ vc.code + " </p>";
-                                    
-                                                        tools.sendEmail(
-                                                            nuser.email,
-                                                            "New PPLE Account Verification",
-                                                            emailtext
-                                                        );
-                                                    })
-                                                    .catch(err => console.log("error sending email: " + err));
-                                        
-                                                });
-                                            });
-                                            // end of create user
-                                        }
-                                    })
-                                    
+                                });
+            
+                                invite.save(invite)
+                                .then(inv => console.log("invite data"))
+                                .catch(err => console.log("error occurred creating invite data"));
+
+                                var cardData = card.brand + ' ending in *' + card.last4;
+                                var now = moment();
+
+                                // send EMail
+                                var emailData = 
+                                {
+                                    title: event.title,
+                                    titleValue: "$" + order.subTotal,
+                                    chargeValue: "$" + order.charges,
+                                    taxValue: "$" + order.vatAmount,
+                                    tipValue: "$" + order.hostTip,
+                                    totalValue: "$" + order.total,//chargeData.amount / 100,
+                                    card: cardData,
+                                    day:  now.format('dddd'),//chargeData "Monday",
+                                    month: now.format('MMMM'),
+                                    date: now.format('DD'),
+                                    year: now.format('YYYY'),
+                                    hour: now.format('hh'),
+                                    minute: now.format('mm'),
+                                    period: now.format('a'),
+                                    orderRef: order.orderRef
                                 }
+
+                                console.log(user.email);
+                                console.log(emailData);
+
+                                tools.sendEmail(
+                                    user.email,
+                                    "your PPLE order completed",
+                                    "Your order have been completed. Here is your receipt:",
+                                    emailData,
+                                    "d-c33389848bd04960acf38e77ff22b83e"
+            
+                                );
+
+
                                 result.status = "success";
                                 result.message = "order paid successfully";
                                 return res.status(200).send(result); 
@@ -458,4 +470,128 @@ exports.allOrders = (req, res) => {
         result.message = "error occurred finding orders";
         return res.status(500).send(result);
     });
+}
+
+exports.getAnOngoingOrder = (req, res) => {
+    var result = {};
+
+    var orderId = req.body.orderId;
+
+    Order.findOne({_id: orderId})
+    .then(order => {
+        if(!order){
+            result.status = "failed";
+            result.message = "order does not exist";
+            return res.status(404).send(result); 
+        }
+
+        result.status = "success";
+        result.message = "order found";
+        result.order = order;
+        return res.status(200).send(result)
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding order";
+        return res.status(500).send(result);
+    });
+}
+
+exports.cancelOrder = (req, res) => {
+    var result = {};
+
+    var userId = req.body.userId;
+    var orderId = req.body.orderId;
+
+    User.findOne({_id: userId})
+    .then(user => {
+        if(!user){
+            result.status = "failed";
+            result.message = "user account does not exist";
+            return res.status(404).send(result); 
+        }
+
+        Order.findOne({_id: orderId})
+        .then(order => {
+            if(!order){
+                result.status = "failed";
+                result.message = "order does not exist";
+                return res.status(404).send(result); 
+            }
+
+            order.status = "cancelled";
+            Order.updateOne({_id: order._id}, order)
+            .then(dd => {
+                result.status = "success";
+                result.message = "order cancelled successfully";
+                return res.status(200).send(result); 
+            })
+            .catch(err => {
+                console.log(err);
+                result.status = "failed";
+                result.message = "error occurred cancelling order";
+                return res.status(500).send(result);
+            });
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding order";
+            return res.status(500).send(result);
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user";
+        return res.status(500).send(result);
+    });
+
+
+}
+
+exports.allUserOrders = (req, res) => {
+    var result = {};
+
+    var userId = req.query.userId;
+    var page = req.query.page;
+    var perPage = 20;
+
+    if(!page){
+        page = 1;
+    }
+
+    Order.countDocuments({userId: userId})
+    .then(count => {
+
+        Order.find({userId: userId})
+        .skip((perPage * page) - perPage)
+        .limit(perPage)
+        .populate('event', {tickets: 0})
+        .populate('user', {password: 0, events: 0, })
+        .populate('paymentCard')
+        .sort('-updatedAt')
+        .then(orders => {
+            result.status = "success";
+            result.page = page;
+            result.total = count;
+            result.perPage = perPage;
+            result.message = "orders found: " + count;
+            result.orders = orders;
+            return res.status(200).send(result);
+        })
+        .catch(error => {
+            result.status = "failed";
+            result.message = "error finding user orders";
+            return res.status(500).send(result);
+        });
+
+    })
+    .catch(error => {
+        result.status = "failed";
+        result.message = "error counting user orders";
+        return res.status(500).send(result);
+    });
+
 }

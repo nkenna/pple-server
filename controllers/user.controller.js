@@ -5,10 +5,12 @@ const Card = db.cards;
 const VerifyCode = db.verifycodes;
 const ResetCode = db.resetcodes;
 const Device = db.devices;
+const Notification = db.notifications;
+//require('dotenv').config();
 //const Stripe = require('stripe');
 //const stripe = Stripe(process.env.STRIPE_API_KEY);
 
-const stripe = require('stripe')('sk_test_4eC39HqLyjWDarjtT1zdp7dc');
+const stripe = require('stripe')(process.env.STRIPE_TEST_API_KEY);
 
 
 
@@ -25,6 +27,8 @@ const bcrypt = require('bcrypt');
 const saltRounds = 10;
 const ExcelJS = require('exceljs');
 var AdminFB = require("firebase-admin");
+const { notifications } = require("../models");
+const Follow = db.follows;
 
 exports.createUser = (req, res) => {
     var result = {};
@@ -83,8 +87,7 @@ exports.createUser = (req, res) => {
                 lastname: lastname,
                 phone: phone,
                 email: email,
-                password: hash,
-                //username: username
+                password: hash
             });
 
                 
@@ -107,6 +110,7 @@ exports.createUser = (req, res) => {
 
                 })
                 .catch(err => console.log("error creating wallet"));
+
                 
                 // creating stripe customer
                 stripe.customers.create({
@@ -147,14 +151,24 @@ exports.createUser = (req, res) => {
                 vcode.save(vcode)
                 .then(vc => {
                     console.log("done creating verification code");
+                    var emailLink = 'https://demoapi.ppleapp.com/api/v1/user/verify-user?code=' + vc.code;
+                   
                 
                     var emailtext = "<p>To verify your account. Click on this link or copy to your browser: " +
-                    "https://pple.com/verify-account/" + vc.code + " or paste this code on the provided field: "+ vc.code + " </p>";
+                    'https://demoapi.ppleapp.com/api/v1/user/verify-user?code=' + vc.code + " or paste this code on the provided field: "+ vc.code + " </p>";
 
+                    var data = {
+                        verifyCode: vc.code,
+                        verifyLink: emailLink
+                    }
+                    
                     tools.sendEmail(
                         user.email,
                         "New PPLE Account Verification",
-                        emailtext
+                        emailtext,
+                        data,
+                        process.env.SENDGRID_NEW_POST
+
                     );
                 })
                 .catch(err => console.log("error sending email: " + err));
@@ -261,7 +275,7 @@ exports.addUsernameToUser = (req, res) => {
 exports.verifyUser = (req, res) => {
     var result = {};
 
-    var code = req.body.code;
+    var code = req.query.code;
 
     if(!code){
         result.status = "failed";
@@ -284,7 +298,7 @@ exports.verifyUser = (req, res) => {
                 result.status = "failed";
                 result.message = "user not found";
                 return res.status(404).send(result);
-            }
+            } //onmcbB
 
             user.verified = true;
             User.updateOne({_id: user._id}, user)
@@ -296,19 +310,19 @@ exports.verifyUser = (req, res) => {
             .then(vidd => console.log("done deleting"))
             .catch(err => console.log("error verification code data"));
 
-            var emailtext = "<p>Dear, " + user.firstname + "</p>" +
+           /* var emailtext = "<p>Dear, " + user.firstname + "</p>" +
                             "You are indeed welcome to PPLE." +
-                            "<p>Thanks, Dakowa Team</p>"
+                            "<p>Thanks, D Team</p>"
                     
             tools.sendEmail(
                 user.email,
                 "PPLE welcomes you",
                 emailtext
-            );
+            );*/
 
             var userData = {
-                id: user._id,
-                email: user.email,
+                //id: user._id,
+                //email: user.email,
                 avatar: user.avatar,
                 firstname: user.firstname,
                 lastname: user.lastname
@@ -317,7 +331,7 @@ exports.verifyUser = (req, res) => {
          
 
             result.status = "success";
-            result.user = userData;
+            //result.user = userData;
             result.message = "user verified successfully";
             return res.status(200).send(result);
         })
@@ -363,17 +377,25 @@ exports.resendVerification = (req, res) => {
                 return res.status(404).send(result);
             }
 
+            var emailLink = 'https://demoapi.ppleapp.com/api/v1/user/verify-user?code=' + vc.code;
+                   
+
 
             // send verification code in mail
             var emailtext = "To verify your account. Click on this link or copy to your browser: " +
-                "https://pple.com/verify-account/" + vc.code ;
+            'https://demoapi.ppleapp.com/api/v1/user/verify-user?code=' + vc.code;
 
-                    
+            var data = {
+                verifyCode: vc.code,
+                verifyLink: emailLink
+            }      
                     
             tools.sendEmail(
                 user.email,
                 "New Account Verification",
-                emailtext
+                emailtext,
+                data,
+                process.env.SENDGRID_NEW_POST
             );
 
             result.status = "success";
@@ -571,6 +593,7 @@ exports.sendResetEmail = (req, res) => {
                 emailtext
             );
 
+
             result.status = "success";
             result.message = "user reset password email sent";
             return res.status(200).send(result);
@@ -765,7 +788,7 @@ exports.editAvatar = (req, res) => {
 
    
     let uploadPath;
-    var userId = req.body.userid;
+    var userId = req.body.userId;
     var avatar = req.files.avatar;    
 
     if (!req.files || Object.keys(req.files).length === 0) {
@@ -773,6 +796,8 @@ exports.editAvatar = (req, res) => {
         result.message = "image fields cannot be empty";
         return res.status(400).send(result);
     }
+
+    console.log(avatar);
 
 
     User.findOne({_id: userId})
@@ -819,7 +844,7 @@ exports.editAvatar = (req, res) => {
                 console.log("Successfully renamed the avatar!");
 
                 // update user avatar field
-                user.avatar = "/media-avatar/" + newName;
+                user.avatar = "media-avatar/" + newName;
                 User.updateOne({_id: user._id}, user)
                 .then(data => {
                     result.status = "success";
@@ -846,7 +871,7 @@ exports.editAvatar = (req, res) => {
 }
 
 exports.addCustomerCard = (req, res) => {
-    console.log(process.env.STRIPE_API_KEY);
+  
     var result = {};
 
     var userId = req.body.userId;
@@ -996,6 +1021,15 @@ exports.updateStripeCustomerCard = (req, res) => {
                 }
             )
             .then(updateData => {
+                // update the current card to default
+                Card.updateMany({userId: user._id}, {isDefault: false})
+                .then(dd => console.log("cards updated to default false"))
+                .catch(err => console.log("error updating cards: " + err));
+
+                card.isDefault = true;
+                Card.updateOne({_id: card._id}, card)
+                .then(dd => console.log("cards updated to default"))
+                .catch(err => console.log("error updating card to default: " + err));
                 
                 result.status = "success";
                 result.message = "default card changed";
@@ -1229,6 +1263,174 @@ exports.allHostUsers = (req, res) => {
         return res.status(500).send(result);
     });
 }
+
+exports.allNotifications = (req, res) => {
+    var result = {};
+
+    Notification.find()
+    .populate('invitee', {firstname: 1, lastname: 1, bio: 1, avatar: 1, email: 1, username: 1})
+    .populate('inviter', {firstname: 1, lastname: 1, bio: 1, avatar: 1, email: 1, username: 1})
+    .populate('event')
+    .populate('follow')
+    .populate('followered', {firstname: 1, lastname: 1, bio: 1, avatar: 1, email: 1, username: 1})
+    .populate('follower', {firstname: 1, lastname: 1, bio: 1, avatar: 1, email: 1, username: 1})
+    .populate('owner', {firstname: 1, lastname: 1, bio: 1, avatar: 1, email: 1, username: 1})
+    .then(notifications => {
+        result.status = "success";
+        result.notifications = notifications;
+        result.message = "notifications found";
+        return res.status(200).send(result) 
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error finding notifications";
+        return res.status(500).send(result);
+    });
+}
+
+exports.countUserUnreadNotifications = (req, res) => {
+    var result = {};
+
+    var userId = req.query.userId;
+
+    Notification.countDocuments({read: false, ownerId: userId})
+    .then(count => {
+        result.status = "success";
+        result.unread = count;
+        result.message = "unread notifications counted";
+        return res.status(200).send(result);
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error counting notifications";
+        return res.status(500).send(result);
+    });
+
+}
+
+exports.allUserNotifications = (req, res) => {
+    var result = {};
+    var userId = req.query.userId;
+
+    Notification.find({ownerId: userId})
+    .populate('invitee', {firstname: 1, lastname: 1, bio: 1, avatar: 1, email: 1, username: 1})
+    .populate('inviter', {firstname: 1, lastname: 1, bio: 1, avatar: 1, email: 1, username: 1})
+    .populate('event')
+    .populate('follow')
+    .populate('invite')
+    .populate('followered', {firstname: 1, lastname: 1, bio: 1, avatar: 1, email: 1, username: 1})
+    .populate('follower', {firstname: 1, lastname: 1, bio: 1, avatar: 1, email: 1, username: 1})
+    .populate('owner', {firstname: 1, lastname: 1, bio: 1, avatar: 1, email: 1, username: 1})
+    .then(notifications => {
+        result.status = "success";
+        result.notifications = notifications;
+        result.message = "user notifications found";
+        return res.status(200).send(result) 
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error finding notifications";
+        return res.status(500).send(result);
+    });
+}
+
+exports.readNotification = (req, res) => {
+    var result = {};
+
+    var notificationId = req.query.notificationId;
+
+    Notification.findOne({_id: notificationId})
+    .then(notification => {
+        if(!notification){
+            result.status = "failed";
+            result.message = "notification data not found";
+            return res.status(404).send(result);
+        }
+
+        notification.read = true;
+
+        Notification.updateOne({_id: notification._id}, notification)
+        .then(data => {
+            result.status = "success";
+            result.message = "notification data updated succesfully";
+            return res.status(200).send(result);
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error updating notification";
+            return res.status(500).send(result);
+        });
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error counting notification";
+        return res.status(500).send(result);
+    });
+}
+
+exports.userPublicProfile = (req, res) => {
+    var result = {};
+
+    var profileId =  req.query.profileId;
+    var authData = req.authData;
+    var userId = authData != null ?  authData.userId : null;
+    var i_follow = false;
+    var followStatus = '';
+
+    // check if user is following this user
+    Follow.findOne({followerId : userId, followedId: profileId})
+    .then(follow => {
+        if(follow){
+            i_follow = true;
+            followStatus = follow.status
+        }
+
+        // find user
+        User.findOne({_id: profileId})
+        .select("-password -events -cards")
+        .then(user => {
+            if(!user){
+                result.status = "failed";
+                result.message = "user does not exist";
+                return res.status(404).send(result); 
+            }
+
+            var publicProfile = {
+                i_follow: i_follow,
+                followStatus: followStatus,
+                user: user
+            };
+
+            result.status = "success";
+            result.message = "user public profile found";
+            result.publicProfile = publicProfile;
+            return res.status(200).send(result); 
+        })
+        .catch(err => {
+            console.log(err);
+            result.status = "failed";
+            result.message = "error occurred finding user";
+            return res.status(500).send(result);
+        });
+
+    })
+    .catch(err => {
+        console.log(err);
+        result.status = "failed";
+        result.message = "error occurred finding user follow data";
+        return res.status(500).send(result);
+    });
+
+
+    
+}
+
+
 
 
 

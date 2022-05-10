@@ -11,115 +11,121 @@ const os = require('os');
 var fs = require('fs');
 
 
+
+
 exports.followUser = (req, res) => {
     var result = {};
 
     var followerId = req.body.followerId;
     var followedId = req.body.followedId;
 
-    User.findOne({_id: followerId})
-    .then(follower => {
-        if(!follower){
+    Follow.findOne({followerId : followerId, followedId: followedId, status: 'pending'})
+    .then(foundFollow => {
+        if(foundFollow){
             result.status = "failed";
-            result.message = "user does not exist";
-            return res.status(404).send(result); 
+            result.message = "follow request already sent";
+            return res.status(419).send(result); 
         }
 
-        User.findOne({_id: followedId})
-        .then(followed => {
-            if(!followed){
+        User.findOne({_id: followerId})
+        .then(follower => {
+            if(!follower){
                 result.status = "failed";
-                result.message = "user to follow does not exist";
+                result.message = "user does not exist";
                 return res.status(404).send(result); 
             }
 
-            // create followe data
-            var follow = new Follow({
-                followerId: follower._id,
-                followedId: followed._id,
-                follower: follower._id,
-                followed: followed._id,
-            });
+            User.findOne({_id: followedId})
+            .then(followed => {
+                if(!followed){
+                    result.status = "failed";
+                    result.message = "user to follow does not exist";
+                    return res.status(404).send(result); 
+                }
 
-            follow.save(follow)
-            .then(newFollow => {
-                // create push notification to followed
-                Device.findOne({userId: followed._id})
-                .then(device => {
-                    if(device){
-                        var data = {
-                            "userId": follower._id.toString()
-                        };
-
-                        tools.pushMessageToDeviceWithData(
-                            device.token,
-                            "New Follow",
-                            "You were just followed by " + follower.username,
-                            data
-                        );
-                    }
-                })
-                .catch(err => console.log("error finding followed device"));
-
-                // create push notification to follower
-                Device.findOne({userId: follower._id})
-                .then(device => {
-                    if(device){
-                        var data = {
-                            "userId": followed._id.toString()
-                        };
-                        tools.pushMessageToDeviceWithData(
-                            device.token,
-                            "New Follow",
-                            "You just followed " + followed.username,
-                            data
-                        );
-                    }
-                })
-                .catch(err => console.log("error finding follower device"));
-
-                // create notification data for followed
-                var notification = new Notification({
-                    type: "follow request", // invite, follow request, follow accept, message, order, refund, payout
-                    message: follower.username + " requested to follow you",
-                    followId: newFollow._id,
-                    follow: newFollow._id,
-                    //followerId: {type: String},
-                    //follower: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
+                // create followe data
+                var follow = new Follow({
+                    followerId: follower._id,
                     followedId: followed._id,
-                    followered: followed._id
+                    follower: follower._id,
+                    followed: followed._id
                 });
 
-                notification.save(notification)
-                .then(newNotification => console.log("new notification created"))
-                .catch(err => console.log("error creating new notification"));
+                follow.save(follow)
+                .then(newFollow => {
+                    // create push notification to followed
+                    Device.findOne({userId: followed._id})
+                    .then(device => {
+                        if(device){
+                            var data = {
+                                "userId": follower._id.toString()
+                            };
 
-                // send response
-                result.status = "success";
-                result.message = "follow request sent successfully";
-                result.followData = newFollow;
-                return res.status(200).send(result); 
+                            tools.pushMessageToDeviceWithData(
+                                device.token,
+                                "New Follow",
+                                follower.username + " requested to follow you on PPLE",
+                                data
+                            );
+                        }
+                    })
+                    .catch(err => console.log("error finding followed device"));
+
+                
+
+                    // create notification data for followed
+                    var notification = new Notification({
+                        type: "follow request", // invite, follow request, follow accept, message, order, refund, payout
+                        message: follower.username + " requested to follow you",
+                        followId: newFollow._id,
+                        follow: newFollow._id,
+                        //followerId: {type: String},
+                        //follower: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
+                        followedId: followed._id,
+                        followered: followed._id,
+                        ownerId: followed._id,
+                        owner: followed._id,
+                    });
+
+                    notification.save(notification)
+                    .then(newNotification => console.log("new notification created"))
+                    .catch(err => console.log("error creating new notification"));
+
+                    // send response
+                    result.status = "success";
+                    result.message = "follow request sent successfully";
+                    result.followData = newFollow;
+                    return res.status(200).send(result); 
+                })
+                .catch(err => {
+                    console.log(err);
+                    result.status = "failed";
+                    result.message = "error occurred creating follow request";
+                    return res.status(500).send(result);
+                });
             })
             .catch(err => {
                 console.log(err);
                 result.status = "failed";
-                result.message = "error occurred creating follow request";
+                result.message = "error occurred finding user to follow";
                 return res.status(500).send(result);
             });
         })
         .catch(err => {
             console.log(err);
             result.status = "failed";
-            result.message = "error occurred finding user to follow";
+            result.message = "error occurred finding user";
             return res.status(500).send(result);
         });
     })
     .catch(err => {
         console.log(err);
         result.status = "failed";
-        result.message = "error occurred finding user";
+        result.message = "error occurred finding follow request";
         return res.status(500).send(result);
     });
+
+    
 }
 
 exports.acceptOrRejectFollow = (req, res) => {
@@ -154,9 +160,9 @@ exports.acceptOrRejectFollow = (req, res) => {
                     return res.status(404).send(result); 
                 }
 
-                // update follow data
-                follow.accepted = acceptStatus == true ? true : false;
 
+                // update follow data
+                follow.status = acceptStatus == true ? 'accepted' : 'rejected';
                 // if accept status is true, proceed to update follow data
                 // if accept status is false, proceed to delete follow data
                 if(acceptStatus == true){
@@ -198,6 +204,8 @@ exports.acceptOrRejectFollow = (req, res) => {
                             follow: follow._id,
                             followerId: follower._id,
                             follower: follower._id,
+                            ownerId: follower._id,
+                            owner: follower._id,
                             //followedId: followed._id,
                             //followered: followed._id
                         });
@@ -234,6 +242,8 @@ exports.acceptOrRejectFollow = (req, res) => {
                         follow: follow._id,
                         followerId: follower._id,
                         follower: follower._id,
+                        ownerId: follower._id,
+                        owner: follower._id,
                         //followedId: followed._id,
                         //followered: followed._id
                     });

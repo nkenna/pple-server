@@ -23,16 +23,20 @@ module.exports = app => {
 
     router.post("/like-event", tools.authenticateToken, likes.LikeEvent);
     router.post("/unlike-event", tools.authenticateToken, likes.UnLikeEvent);
-    router.post("/user-liked-events", likes.userLikedEvents);
+    router.get("/user-liked-events", tools.authenticateToken, likes.userLikedEvents);
     
     router.post("/event-guests", tools.authenticateToken, events.eventGuests);
-    router.post("/joined-events", tools.authenticateToken, events.userJoinedEvents);
+    router.get("/joined-events", tools.authenticateToken, events.userJoinedEvents);
 
     router.get("/all-events", events.allEvents);
     router.get("/upcoming-events", events.upComingEvents);
     router.get("/ongoing-events", events.onGoingEvents);
     router.get("/past-events", events.pastEvents);
     router.get("/cancelled-events", events.cancelledEvents);
+
+    router.get("/user-event-guests", tools.authenticateToken, events.allGuestsByUser);
+
+    router.get("/user-hosted-events", tools.authenticateToken, events.eventsHostedByUser);
       
       
     app.use('/api/v1/event', router);

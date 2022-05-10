@@ -1,9 +1,9 @@
 module.exports = mongoose => {
     var schema = mongoose.Schema(
       { 
-        accepted: { type: Boolean, default: false},
-        followerId: { type: String}, // person following you
-        followedId: { type: String}, // person you are following
+        status: { type: String, default: 'pending' }, // accepted, rejected, pending
+        followerId: { type: String }, // person following you
+        followedId: { type: String }, // person you are following
         follower: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
         followed: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
       },

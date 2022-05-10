@@ -4,6 +4,7 @@ module.exports = mongoose => {
         eventId: { type: String},
         senderId: { type: String},
         message: { type: String},
+        isJoinChat: { type: Boolean, default: false},
         eventRoomId: { type: String},
         eventroom: { type: mongoose.Schema.Types.ObjectId, ref: 'eventroom'},
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},

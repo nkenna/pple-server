@@ -4,6 +4,8 @@ module.exports = mongoose => {
         inviteMsg: {type: String},
         inviterId: { type: String},
         inviteeId: { type: String},
+        accepted: { type: Boolean, default: false},
+        hostRequested: { type: Boolean, default: false},
         eventId: { type: String},
         event: { type: mongoose.Schema.Types.ObjectId, ref: 'event'},
         inviter: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},

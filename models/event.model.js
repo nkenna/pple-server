@@ -7,10 +7,17 @@ module.exports = mongoose => {
         ref: { type: String, default: "", unique: true, require: true },
         creatorId: { type: String, default: "", require: true },
         creatorType: { type: String, default: "", require: true}, // admin or user
+        hostById: { type: String},
+        hostBy: { type: mongoose.Schema.Types.ObjectId, ref: 'user'},
+        hosted: { type: Boolean, default: false },
         startDate: Date,//{ type: String, default: "", require: true },
         endDate: Date,//{ type: String, default: "" },
         maxTickets: { type: Number, default: 0 },
         soldTickets: { type: Number, default: 0 },
+        acceptedInvites: { type: Number, default: 0},
+        rejectedInvites: { type: Number, default: 0},
+        sentInvites: {type: Number, default: 0},
+        minGuestLimit: {type: Number, default: 1},
         guestLimit: { type: Number, default: 0 },
         ticketLimit: { type: Number, default: 1 }, // limit per order
         likesCount: { type: Number, default: 0 },
@@ -39,7 +46,7 @@ module.exports = mongoose => {
         admin: { type: mongoose.Schema.Types.ObjectId, ref: 'admin'},
         location: { type: mongoose.Schema.Types.ObjectId, ref: 'location'},
         eventRoomId: { type: String},
-        eventroom: { type: mongoose.Schema.Types.ObjectId, ref: 'eventroom'},
+        eventRoom: { type: mongoose.Schema.Types.ObjectId, ref: 'eventroom'},
       },
       {timestamps: true}
     );   

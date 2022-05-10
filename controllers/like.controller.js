@@ -35,6 +35,7 @@ exports.LikeEvent = (req, res) => {
             if(!event){
                 result.status = "failed";
                 result.message = "event not found";
+                
                 return res.status(404).send(result);
             }
 
@@ -48,7 +49,14 @@ exports.LikeEvent = (req, res) => {
 
             like.save(like)
             .then(data => {
+                // update event
+                event.likesCount = event.likesCount + 1;
+                Event.updateOne({_id: event._id}, event)
+                .then(dd => console.log('event updated'))
+                .catch(err => console.log('error occured updating event likes count'));
+
                 result.status = "success";
+                result.liked = true;
                 result.message = "event like successful";
                 return res.status(200).send(result);
             })
@@ -81,7 +89,7 @@ exports.UnLikeEvent = (req, res) => {
 
     var userId = req.body.userId;
     var eventId = req.body.eventId;
-    var likeId = req.body.likeId;
+    
    
 
     User.findOne({_id: userId})
@@ -99,21 +107,44 @@ exports.UnLikeEvent = (req, res) => {
                 result.message = "event not found";
                 return res.status(404).send(result);
             }
-            
-            Like.deleteOne({_id: likeId})
-            .then(data => {
-                console.log(data);
-                result.status = "success";
-                result.data = data;
-                result.message = "event unliked successful";
-                return res.status(200).send(result);
+
+            Like.findOne({eventId: event._id, userId: user._id})
+            .then(like => {
+                if(!like){
+                    result.status = "failed";
+                    result.message = "like data not found";
+                    return res.status(404).send(result);
+                }
+
+                Like.deleteOne({_id: like._id})
+                .then(data => {
+                    console.log(data);
+                    // update event
+                    event.likesCount = event.likesCount - 1;
+                    Event.updateOne({_id: event._id}, event)
+                    .then(dd => console.log('event updated'))
+                    .catch(err => console.log('error occured updating event likes count'));
+
+                    result.status = "success";
+                    result.liked = false;
+                    result.message = "event unliked successful";
+                    return res.status(200).send(result);
+                })
+                .catch(err => {
+                    console.log(err);
+                    result.status = "failed";
+                    result.message = "error occurred unliking event";
+                    return res.status(500).send(result);
+                });
             })
             .catch(err => {
                 console.log(err);
                 result.status = "failed";
-                result.message = "error occurred unliking event";
+                result.message = "error occurred finding like data";
                 return res.status(500).send(result);
             });
+            
+            
         })
         .catch(err => {
             console.log(err);
@@ -135,10 +166,17 @@ exports.UnLikeEvent = (req, res) => {
 exports.userLikedEvents = (req, res) => {
     var result = {};
 
-    var userId = req.body.userId;
+    var userId = req.query.userId;
 
     Like.find({userId: userId})
-    .populate("event")
+    .populate({ 
+        path: 'event',
+        populate: {
+          path: 'location',
+          model: 'location',
+        },
+        
+     })
     .then(likes => {
         result.status = "success";
         result.likedEvents = likes;

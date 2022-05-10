@@ -2,8 +2,10 @@ module.exports = mongoose => {
     var schema = mongoose.Schema(
       {
         eventId: { type: String},
+        userId: { type: String},
         lastChat: { type: mongoose.Schema.Types.ObjectId, ref: 'chat'},
         chats: [{ type: mongoose.Schema.Types.ObjectId, ref: 'chat'}],
+        users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'user'}],
         event: { type: mongoose.Schema.Types.ObjectId, ref: 'event'},
       },
       {timestamps: true}

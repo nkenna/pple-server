@@ -9,6 +9,7 @@ const db = require("./models");
 const os = require('os');
 var fs = require('fs');
 const path = require("path");
+require('dotenv').config();
 const app = express();
 
 app.use(cors());
@@ -20,8 +21,13 @@ app.use(fileUpload({
   debug: true
 }));
 
+// production
 var filesFolderAvatar = path.join(process.cwd(), 'media/images/avatars');
 var filesFolderEvents = path.join(process.cwd(), 'media/images/events');
+
+// test
+//var filesFolderAvatar = path.join(process.cwd(), 'test/media/images/avatars');
+//var filesFolderEvents = path.join(process.cwd(), 'test/media/images/events');
 
 console.log(filesFolderAvatar);
 console.log(filesFolderEvents);
@@ -29,9 +35,13 @@ console.log(filesFolderEvents);
 
 //app.use('/static', express.static(path.join(__dirname, 'public')))
 
+// production
 app.use('/media-avatar', express.static(filesFolderAvatar));
 app.use('/media-events', express.static(filesFolderEvents));
 
+//test
+//app.use('/test/media-avatar', express.static(filesFolderAvatar));
+//app.use('/test/media-events', express.static(filesFolderEvents));
 
 db.mongoose
   .connect(db.url, {
@@ -62,7 +72,11 @@ db.mongoose
     res.send("hello apache men");
 });
 
-const PORT = process.env.PORT || 8182;
+// test
+//const PORT = process.env.PORT_TEST || 8585; // test server port 8585...prod server port is 8182
+
+// production
+const PORT = process.env.PORT_PROD || 8182;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}.`);
 });

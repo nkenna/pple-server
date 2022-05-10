@@ -20,16 +20,18 @@ dotenv.config();
 module.exports = {
 
 
-sendEmail: async(reciever, subject, text) => {
+sendEmail: async(reciever, subject, text, data, templateId) => {
     
         sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
         const msg = {
-        to: reciever, // Change to your recipient
-        from: "hello@dakowa.com", // Change to your verified sender
-        subject: subject,
-        //text: text,
-        html: text,
+            to: reciever, // Change to your recipient
+            from: "no-reply@ppleapp.com", // Change to your verified sender
+            template_id: templateId,
+            dynamic_template_data: data,
+            subject: subject,
+            //text: text,
+            html: text,
         }
 
         sgMail
@@ -38,7 +40,7 @@ sendEmail: async(reciever, subject, text) => {
             console.log('Email sent')
         })
         .catch((error) => {
-            console.error(error)
+            console.error(error.response.body)
         })
 
 },
@@ -122,6 +124,24 @@ authenticateToken: (req, res, next) => {
           req.authData = authData
           next() // pass the execution off to whatever request the client intended
         })
+},
+
+authenticateTokenData: (req, res, next) => {
+    var result = {};
+
+    // Gather the jwt access token from the request header
+    const authHeader = req.headers['authorization']
+    const token = authHeader && authHeader.split(' ')[1]
+    
+    if (token != null){
+        jwt.verify(token, process.env.TOKEN_SECRET, (err, authData) => {
+            console.log(err);
+            req.authData = authData
+            next() // pass the execution off to whatever request the client intended
+          })
+    } //return res.sendStatus(401) // if there isn't any token
+      
+        
 },
 
 authenticateSuperAdminToken: (req, res, next) => {
@@ -211,6 +231,52 @@ generateAdminAccessToken: (data) => {
     return jwt.sign(data, process.env.TOKEN_SECRET, { expiresIn: '72000s' });
 },
 
+subscribeToChatRoom: (roomId, token) => {
+    var admin = require("firebase-admin");
+
+    var serviceAccount = require("../services/allshop-dfa73-firebase-adminsdk-il79u-d071b32f0d.json");
+    if (!admin.apps.length) {
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+     }
+    admin.messaging().subscribeToTopic(token, roomId)
+    .then(function(response) {
+        console.log("Successfully subscribed:", response);
+        console.log(response.results);
+    })
+    .catch(function(error) {
+        console.log("Error subscribing:", error);
+    });
+},
+
+roundUpNumber: (num) => {
+    var m = Number((Math.abs(num) * 100).toPrecision(15));
+    return Math.round(m) / 100 * Math.sign(num);
+},
+
+
+
+
+unSubscribeToChatRoom: (roomId, token) => {
+    var admin = require("firebase-admin");
+
+    var serviceAccount = require("../services/allshop-dfa73-firebase-adminsdk-il79u-d071b32f0d.json");
+    if (!admin.apps.length) {
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+     }
+    admin.messaging().unsubscribeFromTopic(token, roomId)
+    .then(function(response) {
+        console.log("Successfully unsubscribed:", response);
+        console.log(response.results);
+    })
+    .catch(function(error) {
+        console.log("Error unsubscribing:", error);
+    });
+},
+
 
 pushMessageToDevice: (deviceToken, title, body) => {
 
@@ -235,6 +301,8 @@ pushMessageToDevice: (deviceToken, title, body) => {
         timeToLive: 60 * 60 *24
       };
       console.log(deviceToken);
+
+      
 
       admin.messaging().sendToDevice(deviceToken, payload, options)
         .then(function(response) {
